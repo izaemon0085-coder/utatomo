@@ -13,6 +13,7 @@ const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=u
 const COOKIE = 'utatomo_session';
 export const TOMOHANE_URL = (process.env.TOMOHANE_URL || 'http://localhost:3000').replace(/\/+$/, '');
 export const VTOMO_URL = (process.env.VTOMO_URL || 'http://localhost:4200').replace(/\/+$/, ''); // Vとも（キャラ作り）
+export const TOMORU_URL = (process.env.TOMORU_URL || 'http://localhost:4100').replace(/\/+$/, ''); // ともーるアリーナ（ライブ）
 export const LINK_SECRET = process.env.LINK_SECRET || 'tomohane-dev-link-secret';
 
 async function readJson(req, limit = 16 * 1024) {
@@ -40,7 +41,7 @@ const readCookie = (req, name) => {
   return null;
 };
 
-export function createApp({ tomohaneUrl = TOMOHANE_URL, linkSecret = LINK_SECRET, fetchImpl = fetch, studio = createStudio(), vtomoUrl = VTOMO_URL } = {}) {
+export function createApp({ tomohaneUrl = TOMOHANE_URL, linkSecret = LINK_SECRET, fetchImpl = fetch, studio = createStudio(), vtomoUrl = VTOMO_URL, tomoruUrl = TOMORU_URL } = {}) {
   const sessions = new Map(); // トークン → gameId
   const me = (req) => {
     const id = sessions.get(readCookie(req, COOKIE));
@@ -54,7 +55,7 @@ export function createApp({ tomohaneUrl = TOMOHANE_URL, linkSecret = LINK_SECRET
 
   const routes = [
     ['GET', /^\/api\/health$/, () => ({ ok: true })],
-    ['GET', /^\/api\/config$/, () => ({ tomohaneUrl, vtomoUrl, max: MAX_SONGS, titleMax: TITLE_MAX })],
+    ['GET', /^\/api\/config$/, () => ({ tomohaneUrl, vtomoUrl, tomoruUrl, max: MAX_SONGS, titleMax: TITLE_MAX })],
     ['GET', /^\/api\/state$/, ({ req }) => studio.view(me(req))],
     ['POST', /^\/api\/songs$/, ({ req, body }) => [201, studio.save(need(req), { title: body.title, song: body.song })]],
     ['POST', /^\/api\/songs\/([\w-]+)$/, ({ req, params, body }) => studio.save(need(req), { id: params[0], title: body.title, song: body.song })],

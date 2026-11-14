@@ -110,6 +110,26 @@
       </div>
       <p class="muted small" id="video-msg" aria-live="polite">書き出しには、曲と同じ長さの時間がかかります（そのあいだ、この画面を開いたままにしてね）。</p>
     </section>
+
+    <section class="card" aria-labelledby="h-live">
+      <h2 id="h-live"><span class="no">7</span> アリーナでライブ 🏟️</h2>
+      <p class="muted small">ともーるアリーナで、キャラがステージに立って歌います。観客はペンライトとコールで応援します。声は入りません（曲・歌詞・キャラ・コールだけ）。</p>
+      <h3>📣 コールを入れる</h3>
+      <p class="muted small">観客がいっしょに声を出すところです。その部分が始まる1小節前に「次はコール！」と出ます。</p>
+      <div class="calls" id="calls"></div>
+      <div class="btn-row">
+        <button type="button" class="btn" id="make-live">🎤 ライブコードを作る</button>
+      </div>
+      <div id="live-out" hidden>
+        <label class="lyric-field"><span class="small">ライブコード（運営に送ってね。運営がアリーナでライブを開きます）</span>
+          <textarea id="live-code" rows="3" readonly></textarea></label>
+        <div class="btn-row">
+          <button type="button" class="btn ghost small" id="copy-live">📋 ライブコードをコピー</button>
+          <a class="btn ghost small" id="to-tomoru" href="#" target="_blank" rel="noopener">🏟️ アリーナで見本を見る</a>
+        </div>
+      </div>
+      <p class="muted small" id="live-msg" aria-live="polite"></p>
+    </section>
   </main>
 
   <div class="transport" role="group" aria-label="再生">

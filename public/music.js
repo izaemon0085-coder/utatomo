@@ -104,6 +104,8 @@ export const LENGTHS = { 15: '15秒', 30: '30秒', 60: '60秒', 120: '2分', 180
 export const LIVE_LENGTHS = [120, 180]; // ライブの型（歌を入れる長い曲）
 export const LYRIC_MAX = 80; // 1つの部分の歌詞は80文字まで
 export const LYRIC_LINES = 4; // 1つの部分の歌詞は4行まで
+// コール：ライブで観客がいっしょに声を出すところ（部分ごとに1つ）。決まった言葉だけ
+export const CALLS = ['ハイ！ハイ！', 'せーの！', 'フッフー！', 'オイ！オイ！', 'ありがとう！'];
 export const TEMPO_MIN = 70;
 export const TEMPO_MAX = 150;
 export const MAX_BARS = 120;
@@ -194,7 +196,8 @@ export function checkSong(input) {
     }
     const lyric = cleanLyric(s.lyric);
     if (lyric === null) return bad('lyric');
-    sections.push(lyric ? { part: s.part, bars: s.bars, panels, lyric } : { part: s.part, bars: s.bars, panels });
+    if (s.call != null && !CALLS.includes(s.call)) return bad('call');
+    sections.push({ part: s.part, bars: s.bars, panels, ...(lyric ? { lyric } : {}), ...(s.call ? { call: s.call } : {}) });
   }
   const song = { v: 1, mood: input.mood, length, tempo, quiet: Boolean(input.quiet), sections };
   if (totalBars(song) > MAX_BARS || songSeconds(song) > MAX_SECONDS) return bad('bars');

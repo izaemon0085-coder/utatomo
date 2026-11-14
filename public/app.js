@@ -3,9 +3,10 @@ import * as M from './music.js';
 import { precheck } from './precheck.js';
 import * as V from './video.js';
 import { renderStand, checkLook, randomLook } from './parts.js';
+import { liveFromSong, encodeLive } from './live.js';
 
 const $ = (s) => document.querySelector(s);
-let config = { tomohaneUrl: 'http://localhost:3000', vtomoUrl: 'http://localhost:4200', max: 10, titleMax: 20 };
+let config = { tomohaneUrl: 'http://localhost:3000', vtomoUrl: 'http://localhost:4200', tomoruUrl: 'http://localhost:4100', max: 10, titleMax: 20 };
 let state = { me: null, songs: [] };
 let song = M.buildBgm('bright', 30);
 let selected = 0; // いま直している部分
@@ -196,6 +197,8 @@ function renderAll() {
   renderLyric();
   renderOut();
   renderSet();
+  renderCalls();
+  $('#live-out').hidden = true;
   updateTime(0);
 }
 
@@ -744,6 +747,47 @@ $('#chara-random').onclick = () => setLook(randomLook(), 'random');
 $('#chara-none').onclick = () => setLook(null);
 $('#video-lyrics').onchange = () => drawPreview();
 $('#video-guide').onchange = () => drawPreview();
+
+// ── アリーナでライブ：部分ごとのコール → ライブコード ──
+function renderCalls() {
+  $('#calls').replaceChildren(...song.sections.map((s, i) => {
+    const sel = el('select', {}, [el('option', { value: '', textContent: 'コールなし' }), ...M.CALLS.map((w) => el('option', { value: w, textContent: `📣 ${w}` }))]);
+    sel.value = s.call || '';
+    sel.setAttribute('aria-label', `${i + 1}番目「${M.PARTS[s.part].label}」のコール`);
+    sel.onchange = () => {
+      if (sel.value) s.call = sel.value;
+      else delete s.call;
+      $('#live-out').hidden = true;
+    };
+    return el('label', {}, [`${i + 1}. ${M.PARTS[s.part].label}`, sel]);
+  }));
+}
+$('#make-live').onclick = () => {
+  showError();
+  const title = $('#title').value.trim();
+  if (!title) { $('#live-msg').textContent = '⑤ の「曲の名前」を入れてから作ってね'; $('#title').focus(); return; }
+  const r = liveFromSong({ title, song, look });
+  if (!r.ok) {
+    $('#live-msg').textContent = r.bad === 'lyric' ? `この歌詞では、ライブにできません${r.reason ? `（${r.reason}）` : ''}`
+      : r.bad === 'title' ? '曲の名前に、アドレスや長い数字は入れられません' : 'ライブコードを作れませんでした（歌詞の行や文字が多すぎないか見てね）';
+    return;
+  }
+  const code = encodeLive(r.live);
+  $('#live-code').value = code;
+  const u = new URL('/', config.tomoruUrl);
+  if (['localhost', '127.0.0.1'].includes(u.hostname) && !['localhost', '127.0.0.1'].includes(location.hostname)) u.hostname = location.hostname;
+  u.searchParams.set('live', code);
+  $('#to-tomoru').href = u.href;
+  $('#live-out').hidden = false;
+  $('#live-msg').textContent = `🎤 ライブコードができたよ（コール ${r.live.calls.length} か所${look ? '・キャラつき' : ''}）。運営に送ると、アリーナでライブを開いてくれます。`;
+  say('アリーナのステージで歌うの、楽しみだね！ 🦚クジャクさんが司会をしてくれるよ♪');
+};
+$('#copy-live').onclick = async () => {
+  try {
+    await navigator.clipboard.writeText($('#live-code').value);
+    $('#live-msg').textContent = '📋 ライブコードをコピーしたよ';
+  } catch { $('#live-code').select(); $('#live-msg').textContent = 'コピーできなかったので、選んでおいたよ。長押しでコピーしてね'; }
+};
 
 // ── 操作 ──
 $('#auto').onclick = () => {

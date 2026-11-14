@@ -106,3 +106,8 @@ p { margin: 4px 0; }
 .video-wrap { display: flex; justify-content: center; background: var(--board); border-radius: 14px; padding: 10px; margin: 8px 0; }
 .video-wrap canvas { display: block; max-width: 100%; height: auto; max-height: 60vh; border-radius: 8px; }
 #video-rec.on { background: #d6457a; color: #fff; }
+/* コール：部分ごとに1つえらぶ */
+.calls { display: grid; gap: 6px; margin: 6px 0; }
+.calls label { display: grid; grid-template-columns: 7em 1fr; gap: 8px; align-items: center; font-weight: 700; font-size: .92rem; }
+.calls select { min-height: 40px; border: 2px solid var(--border); border-radius: 10px; padding: 4px 8px; background: var(--surface); color: var(--text); font: inherit; }
+#live-code { font-family: ui-monospace, monospace; font-size: .75rem; word-break: break-all; }
