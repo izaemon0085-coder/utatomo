@@ -95,25 +95,40 @@ export const PARTS = {
   a: { label: 'Aメロ', color: '#9ad3a8' },
   b: { label: 'Bメロ', color: '#f3d27a' },
   sabi: { label: 'サビ', color: '#f29bc0' },
+  kansou: { label: '間奏', color: '#b5d6f2' },
+  c: { label: 'Cメロ', color: '#f2c3a2' },
   outro: { label: 'おわり', color: '#c3b2ea' },
   loop: { label: 'ループ', color: '#a7d8d8' },
 };
-export const LENGTHS = { 15: '15秒', 30: '30秒', 60: '60秒', loop: 'ループ' };
+export const LENGTHS = { 15: '15秒', 30: '30秒', 60: '60秒', 120: '2分', 180: '3分', loop: 'ループ' };
+export const LIVE_LENGTHS = [120, 180]; // ライブの型（歌を入れる長い曲）
+export const LYRIC_MAX = 80; // 1つの部分の歌詞は80文字まで
+export const LYRIC_LINES = 4; // 1つの部分の歌詞は4行まで
 export const TEMPO_MIN = 70;
 export const TEMPO_MAX = 150;
-export const MAX_BARS = 64;
+export const MAX_BARS = 120;
 export const MAX_SECTIONS = 12;
-export const MAX_SECONDS = 120;
+export const MAX_SECONDS = 200;
 
 export const barSeconds = (tempo) => 240 / tempo;
 export const totalBars = (song) => song.sections.reduce((n, s) => n + s.bars, 0);
 export const songSeconds = (song) => totalBars(song) * barSeconds(song.tempo);
 
 const evenFloor = (x) => Math.max(2, Math.floor(x / 2) * 2);
+// ライブの型（計画書の「1〜3分の曲の設計図」）。数字は小節の重み。長さとテンポに合わせてのばす・ちぢめる
+const LIVE_FORMS = {
+  120: [['intro', 4], ['a', 8], ['b', 8], ['sabi', 8], ['kansou', 4], ['a', 8], ['sabi', 8], ['outro', 4]],
+  180: [['intro', 4], ['a', 8], ['b', 8], ['sabi', 8], ['kansou', 4], ['a', 8], ['b', 8], ['sabi', 8], ['c', 8], ['sabi', 16], ['outro', 8]],
+};
 // 長さ（秒）から、小節の数と部分の並びを決める
 export function planSections(length, tempo) {
   if (length === 'loop') return [['loop', 8]];
   const n = Math.max(4, Math.round((Number(length) * tempo) / 240 / 2) * 2);
+  const form = LIVE_FORMS[length];
+  if (form) {
+    const w = form.reduce((t, [, b]) => t + b, 0);
+    return form.map(([p, b]) => [p, Math.min(32, evenFloor(Math.round((b * n) / w / 2) * 2))]);
+  }
   if (n <= 10) return [['intro', 2], ['sabi', n - 4], ['outro', 2]].filter(([, b]) => b > 0);
   if (n <= 20) {
     const a = evenFloor((n - 4) / 2);
@@ -134,6 +149,8 @@ function panelsFor(part, set, rng) {
   if (part === 'a') Object.assign(p, { rhythm: set.rhythm, bass: set.bass, chord: set.chord, melody: set.melody === 'hum' ? null : 'hum' });
   if (part === 'b') Object.assign(p, { rhythm: set.rhythm === 'soft' ? 'bounce' : 'soft', bass: set.bass, chord: set.chord === 'fuwa' ? 'setsunai' : 'fuwa', melody: 'hum' });
   if (part === 'sabi') Object.assign(p, { rhythm: set.rhythm, bass: set.bass, chord: set.chord, melody: set.melody === 'hum' ? 'sabi' : set.melody, fx: set.fx });
+  if (part === 'kansou') Object.assign(p, { rhythm: set.rhythm, bass: set.bass, chord: 'sparkle', melody: 'hop', fx: set.fx });
+  if (part === 'c') Object.assign(p, { rhythm: 'soft', bass: 'slow', chord: 'setsunai', melody: 'hum' });
   if (part === 'outro') Object.assign(p, { chord: 'fuwa', bass: 'slow', melody: 'owari' });
   if (part === 'loop') Object.assign(p, { rhythm: set.rhythm, bass: set.bass, chord: set.chord, melody: 'hum' });
   for (const inst of INSTS) if (part !== 'outro' && part !== 'intro') p[inst] = vary(inst, p[inst]);
@@ -175,11 +192,41 @@ export function checkSong(input) {
       if (v !== null && !Object.hasOwn(PANELS[inst].options, v)) return bad('panels');
       panels[inst] = v;
     }
-    sections.push({ part: s.part, bars: s.bars, panels });
+    const lyric = cleanLyric(s.lyric);
+    if (lyric === null) return bad('lyric');
+    sections.push(lyric ? { part: s.part, bars: s.bars, panels, lyric } : { part: s.part, bars: s.bars, panels });
   }
   const song = { v: 1, mood: input.mood, length, tempo, quiet: Boolean(input.quiet), sections };
   if (totalBars(song) > MAX_BARS || songSeconds(song) > MAX_SECONDS) return bad('bars');
   return { ok: true, song };
+}
+
+// 歌詞：見えない文字をのぞき、行の頭とおしりの空白をとる。長すぎるときは null
+export function cleanLyric(v) {
+  if (v == null || v === '') return '';
+  if (typeof v !== 'string') return null;
+  const lines = v.replace(/\r\n?/g, '\n').replace(/[\u0000-\u0009\u000b-\u001f\u007f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, '')
+    .split('\n').map((l) => l.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  if (lines.length > LYRIC_LINES || [...lines.join('')].length > LYRIC_MAX) return null;
+  return lines.join('\n');
+}
+// 歌詞をまとめて1つの文にする（送る前のチェックに使う）
+export const allLyrics = (song) => song.sections.map((s) => s.lyric || '').filter(Boolean).join('\n');
+
+// 配信セット：「はじまり」「まったり」「おわり」の3曲を1組で（計画書の BGM モード）
+export const STREAM_SET = [
+  { id: 'start', label: 'はじまり', emoji: '🌅' },
+  { id: 'chill', label: 'まったり', emoji: '🍵' },
+  { id: 'end', label: 'おわり', emoji: '🌙' },
+];
+export function buildStreamSet(mood = 'bright', { rng = null } = {}) {
+  const m = MOODS[mood] ? mood : 'bright';
+  const chillMood = { bright: 'oshare', cute: 'calm', cool: 'oshare', oshare: 'calm', calm: 'calm', party: 'oshare' }[m];
+  return {
+    start: buildBgm(m, 'loop', { rng }),
+    chill: buildBgm(chillMood, 'loop', { rng, quiet: true }),
+    end: buildBgm(m, 30, { rng, quiet: true }),
+  };
 }
 
 // ── 音づくり（すべて計算で作る） ──

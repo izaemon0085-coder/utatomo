@@ -86,3 +86,19 @@ p { margin: 4px 0; }
   .cell { font-size: .78rem; min-height: 56px; }
   .pad { padding: 8px; }
 }
+
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.set-box { margin-top: 10px; padding: 10px; border-radius: 12px; background: var(--surface-2); }
+/* 歌詞と声 */
+.lyric-field textarea { width: 100%; border: 2px solid var(--border); border-radius: 10px; padding: 8px 10px; background: var(--surface); line-height: 1.7; font-size: 1rem; resize: vertical; }
+.check-box { display: grid; gap: 6px; margin: 6px 0; }
+.check-box .agent { display: flex; gap: 8px; align-items: flex-start; background: var(--surface-2); border-radius: 10px; padding: 6px 10px; font-size: .92rem; }
+.check-box .agent.block { border: 2px solid var(--error); }
+.check-box .agent span:first-child { font-size: 1.3rem; line-height: 1.2; }
+.voice-box { margin-top: 8px; border-top: 1px dashed var(--border); padding-top: 8px; }
+#rec.on { background: #d6457a; color: #fff; }
+.sec.has-voice::after { content: " 🎙️"; }
+/* 歌詞が流れる画面（再生中、下の再生ボタンの上に出る） */
+.karaoke { flex-basis: 100%; text-align: center; font-weight: 800; font-size: 1.15rem; line-height: 1.5; max-width: 788px; }
+.karaoke .line { color: var(--muted); opacity: .6; }
+.karaoke .line.now { color: var(--accent); opacity: 1; font-size: 1.3rem; }

@@ -29,6 +29,12 @@
       <div class="chips" id="lengths" role="radiogroup" aria-label="長さ"></div>
       <label class="check"><input type="checkbox" id="quiet"> 🎙️ 声のじゃまをしない（音を小さめ・メロディひかえめ。動画や配信の後ろに）</label>
       <button type="button" class="btn big wide" id="auto">🎲 おまかせで組み立てる</button>
+      <button type="button" class="btn ghost wide" id="make-set">📺 配信セットを作る（はじまり・まったり・おわり）</button>
+      <div class="set-box" id="set-box" hidden>
+        <p class="muted small">配信の待機画面・まったりトーク・おわりのあいさつに。押すと、その曲を直せます。</p>
+        <div class="chips" id="set-tabs" role="radiogroup" aria-label="配信セットの曲"></div>
+        <button type="button" class="btn ghost small" id="export-set">💾 3曲まとめて書き出す</button>
+      </div>
     </section>
 
     <section class="card" aria-labelledby="h-plan">
@@ -44,8 +50,25 @@
       <div class="pad" id="pad"></div>
     </section>
 
+    <section class="card" aria-labelledby="h-lyric">
+      <h2 id="h-lyric"><span class="no">4</span> 歌詞と声 <span class="muted small" id="lyric-part"></span></h2>
+      <p class="muted small">部分ごとに歌詞を書けます（4行・80文字まで）。再生すると、歌詞が下に流れます。</p>
+      <label class="lyric-field"><span class="sr-only">この部分の歌詞</span>
+        <textarea id="lyric" rows="4" maxlength="120" placeholder="例：きょうは きみの たんじょうび&#10;ひかる ステージ みててね"></textarea></label>
+      <p class="muted small" id="lyric-count"></p>
+      <div class="check-box" id="check-box" aria-live="polite"></div>
+      <div class="voice-box">
+        <div class="btn-row">
+          <button type="button" class="btn" id="rec">🎙️ この部分を録る</button>
+          <button type="button" class="btn ghost small" id="rec-del" hidden>声を消す</button>
+        </div>
+        <p class="muted small" id="voice-msg">イヤホンをつけて録ってね。1小節「カッ・カッ・カッ・カッ」と数えてから始まります。</p>
+        <p class="muted small">🔒 声はこの端末の中だけ。サーバーには送りません（ページを閉じると消えます）。声は変えません。子どもの声は、書き出しに入りません。</p>
+      </div>
+    </section>
+
     <section class="card" aria-labelledby="h-out">
-      <h2 id="h-out"><span class="no">4</span> 書き出し・保存</h2>
+      <h2 id="h-out"><span class="no">5</span> 書き出し・保存</h2>
       <label class="title-field">曲の名前 <input type="text" id="title" maxlength="20" placeholder="例：おめでとうのうた" autocomplete="off"></label>
       <div class="btn-row">
         <button type="button" class="btn" id="export">💾 音を書き出す（WAV）</button>
@@ -68,6 +91,7 @@
   </main>
 
   <div class="transport" role="group" aria-label="再生">
+    <div class="karaoke" id="karaoke" aria-live="off" hidden></div>
     <button type="button" class="btn play" id="play" aria-pressed="false">▶ 再生</button>
     <label class="check small"><input type="checkbox" id="repeat-part"> 🔁 えらんだ部分だけくり返す</label>
     <span class="time" id="time">0:00 / 0:00</span>

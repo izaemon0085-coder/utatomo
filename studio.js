@@ -2,7 +2,8 @@
 // 保存するのは「曲の設計図」（雰囲気・テンポ・部分とパネル）だけ。音はブラウザでいつでも作りなおせる
 // データはメモリの中だけ（β版。サーバーを止めると消える）
 import { randomUUID } from 'node:crypto';
-import { checkSong } from './public/music.js';
+import { checkSong, allLyrics, LYRIC_LINES, LYRIC_MAX } from './public/music.js';
+import { precheck } from './public/precheck.js';
 
 export class HttpError extends Error {
   constructor(status, message) {
@@ -54,7 +55,13 @@ export function createStudio({ now = () => Date.now() } = {}) {
   const pub = (s) => ({ id: s.id, title: s.title, song: structuredClone(s.song), updatedAt: s.updatedAt });
   const song = (input) => {
     const r = checkSong(input);
-    if (!r.ok) throw new HttpError(400, `曲の形が正しくありません（${r.bad}）`);
+    if (!r.ok) {
+      if (r.bad === 'lyric') throw new HttpError(400, `歌詞は1つの部分につき${LYRIC_LINES}行・${LYRIC_MAX}文字までです`);
+      throw new HttpError(400, `曲の形が正しくありません（${r.bad}）`);
+    }
+    // 送る前のチェック（ともはね と同じ）：はっきりした犯罪につながる歌詞は保存できない。声をかけるだけのものは本人が決める
+    const c = precheck(allLyrics(r.song));
+    if (c.level === 'block') throw new HttpError(400, `この歌詞は保存できません（${c.reason}）`);
     return r.song;
   };
 
@@ -74,7 +81,7 @@ export function createStudio({ now = () => Date.now() } = {}) {
       if (!me) return { me: null, songs: [], max: MAX_SONGS, guide: GUIDE, say: SAY.guest };
       const list = mine(me.gameId);
       return {
-        me: { name: me.name, ageGroup: AGE[me.ageGroup] },
+        me: { name: me.name, ageGroup: AGE[me.ageGroup], child: me.ageGroup === 'child' }, // 子どもの声は外へ書き出さない（計画書の守る線）
         songs: list.map(pub),
         max: MAX_SONGS,
         guide: GUIDE,

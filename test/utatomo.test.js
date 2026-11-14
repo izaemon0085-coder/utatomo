@@ -4,7 +4,9 @@ import http from 'node:http';
 import {
   MOODS, MOOD_IDS, INSTS, PANELS, PARTS, LENGTHS, optionIds, buildBgm, checkSong, planSections,
   renderBar, renderSong, encodeWav, songSeconds, totalBars, flattenBars, creditText, barSeconds, MAX_BARS,
+  cleanLyric, allLyrics, buildStreamSet, STREAM_SET, LIVE_LENGTHS,
 } from '../public/music.js';
+import { precheck } from '../public/precheck.js';
 import { createStudio, checkTitle, MAX_SONGS } from '../studio.js';
 import { createApp } from '../server.js';
 
@@ -56,7 +58,7 @@ test('曲の形のチェック：決まった中からだけ（保存や読み�
   assert.equal(checkSong({ ...s, sections: [] }).bad, 'sections');
   assert.equal(checkSong({ ...s, sections: [{ part: 'x', bars: 4, panels: {} }] }).bad, 'part');
   assert.equal(checkSong({ ...s, sections: [{ part: 'a', bars: 4, panels: { rhythm: '<script>' } }] }).bad, 'panels');
-  assert.equal(checkSong({ ...s, sections: Array.from({ length: 3 }, () => ({ part: 'a', bars: 32, panels: {} })) }).bad, 'bars', `長すぎる曲（${MAX_BARS}小節より多い）はだめ`);
+  assert.equal(checkSong({ ...s, sections: Array.from({ length: 4 }, () => ({ part: 'a', bars: 32, panels: {} })) }).bad, 'bars', `長すぎる曲（${MAX_BARS}小節より多い）はだめ`);
   const r = checkSong({ ...s, evil: 1, sections: [{ part: 'a', bars: 4, panels: { bass: 'pon', extra: 'x' } }] });
   assert.equal(r.ok, true);
   assert.equal('evil' in r.song, false, '知らない項目は捨てる');
@@ -125,7 +127,7 @@ test('1曲にする：30秒の曲・ループ・WAV の書き出し', () => {
 test('クレジット：自分たちのタグ（#ともはね）', () => {
   assert.match(creditText('おめでとう'), /「おめでとう」.*音 © ともはね.*#ともはね #うたとも/);
   assert.match(creditText('  '), /わたしの1曲/);
-  assert.deepEqual(Object.keys(LENGTHS), ['15', '30', '60', 'loop']);
+  assert.deepEqual(Object.keys(LENGTHS), ['15', '30', '60', '120', '180', 'loop']);
   assert.ok(PARTS.sabi && PARTS.loop);
 });
 
@@ -207,4 +209,67 @@ test('サーバー：ともはねの通行証でログインし、曲を保存�
   } finally {
     server.close();
   }
+});
+
+test('ライブの型：2分・3分は、間奏やCメロのある長い曲になる', () => {
+  assert.deepEqual(LIVE_LENGTHS, [120, 180]);
+  for (const mood of MOOD_IDS) {
+    for (const len of LIVE_LENGTHS) {
+      const s = buildBgm(mood, len);
+      const sec = songSeconds(s);
+      assert.ok(Math.abs(sec - len) <= len * 0.15, `${mood} ${len}秒 → ${sec.toFixed(0)}秒`);
+      assert.equal(checkSong(s).ok, true, `${mood} ${len}`);
+      assert.ok(s.sections.some((x) => x.part === 'kansou'), '間奏がある');
+      if (len === 180) assert.ok(s.sections.some((x) => x.part === 'c'), '3分はCメロがある');
+    }
+  }
+  assert.deepEqual(buildBgm('bright', 120).sections.map((x) => x.part), ['intro', 'a', 'b', 'sabi', 'kansou', 'a', 'sabi', 'outro'], '計画書の2分の型');
+  const r = renderSong(buildBgm('calm', 180), { sampleRate: 4000 });
+  assert.ok(r.left.every(Number.isFinite), '3分の曲も音にできる');
+});
+
+test('歌詞：部分ごとに4行・80文字まで。見えない文字はのぞく', () => {
+  assert.equal(cleanLyric(undefined), '');
+  assert.equal(cleanLyric('  きょうは  きみの\r\n\n たんじょうび\u200b '), 'きょうは きみの\nたんじょうび');
+  assert.equal(cleanLyric('1\n2\n3\n4\n5'), null, '5行はだめ');
+  assert.equal(cleanLyric('あ'.repeat(81)), null, '81文字はだめ');
+  assert.equal(cleanLyric(123), null);
+  const s = buildBgm('bright', 30);
+  s.sections[1].lyric = 'ひかる ステージ\nみててね';
+  s.sections[2].lyric = '';
+  const r = checkSong(s);
+  assert.equal(r.ok, true);
+  assert.equal(r.song.sections[1].lyric, 'ひかる ステージ\nみててね');
+  assert.equal('lyric' in r.song.sections[2], false, '空の歌詞はのこさない');
+  assert.equal(allLyrics(r.song), 'ひかる ステージ\nみててね');
+  assert.equal(checkSong({ ...s, sections: [{ ...s.sections[0], lyric: 'x\n'.repeat(6) }] }).bad, 'lyric');
+  assert.equal(precheck('殺してやる').level, 'block', '送る前のチェックは ともはね と同じ');
+});
+
+test('配信セット：はじまり（ループ）・まったり（ひかえめのループ）・おわり（30秒）', () => {
+  assert.deepEqual(STREAM_SET.map((x) => x.id), ['start', 'chill', 'end']);
+  for (const mood of MOOD_IDS) {
+    const set = buildStreamSet(mood);
+    assert.equal(set.start.length, 'loop');
+    assert.equal(set.chill.length, 'loop');
+    assert.equal(set.chill.quiet, true, 'まったりは声のじゃまをしない');
+    assert.equal(set.end.length, 30);
+    for (const x of Object.values(set)) assert.equal(checkSong(x).ok, true);
+  }
+});
+
+test('保存：送る前のチェックで止まる歌詞は保存できない・声をかけるだけの歌詞は保存できる・子どもかどうかを画面に渡す', () => {
+  const s = createStudio();
+  const kid = s.upsertPerson({ gameId: 'u_kid', name: 'こども', ageGroup: 'child' }).gameId;
+  const song = buildBgm('bright', 30);
+  song.sections[1].lyric = '闇バイト 募集 DM まってる';
+  assert.throws(() => s.save(kid, { title: 'だめ', song }), { status: 400, message: /保存できません（闇バイトの募集）/ });
+  song.sections[1].lyric = 'くやしい でも また がんばる';
+  assert.equal(precheck(allLyrics(song)).level, 'notice');
+  assert.equal(s.save(kid, { title: 'がんばるうた', song }).song.song.sections[1].lyric, 'くやしい でも また がんばる');
+  song.sections[1].lyric = 'あ'.repeat(90);
+  assert.throws(() => s.save(kid, { title: 'ながい', song }), { status: 400, message: /4行・80文字/ });
+  assert.equal(s.view(kid).me.child, true, '子どもの声は書き出さない（画面で使う）');
+  const adult = s.upsertPerson({ gameId: 'u_ad', name: 'おとな', ageGroup: 'adult' }).gameId;
+  assert.equal(s.view(adult).me.child, false);
 });
