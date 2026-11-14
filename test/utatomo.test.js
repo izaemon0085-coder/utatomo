@@ -196,7 +196,8 @@ test('サーバー：ともはねの通行証でログインし、曲を保存�
     const st = await fetch(`${base}/api/state`, { headers: { Cookie: cookie } }).then((x) => x.json());
     assert.equal(st.me.ageGroup, '中高生');
     assert.equal(st.songs[0].title, 'はじめての曲');
-    assert.equal(st.guide.emoji, '🐦');
+    assert.equal(st.guide.name, 'クロツグミ', '案内役はクロツグミ');
+    assert.match((await fetch(`${base}${st.guide.img}`)).headers.get('content-type'), /image\/svg\+xml/, 'クロツグミの絵が出る');
     assert.equal((await send(`/songs/${saved.id}`, { title: '上書き', song: buildBgm('cool', 15) })).status, 200);
     assert.equal((await send(`/songs/${saved.id}/delete`, {})).status, 200);
     const big = await send('/songs', { title: 'x', song: { ...song, pad: 'x'.repeat(20000) } });

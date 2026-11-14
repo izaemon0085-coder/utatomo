@@ -362,7 +362,6 @@ $('#logout').onclick = async () => {
 async function loadState() {
   state = await api('/state');
   say(state.say);
-  if (state.guide) $('#guide-face').textContent = state.guide.emoji;
   renderMe();
 }
 
