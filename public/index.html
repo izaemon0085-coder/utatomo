@@ -63,6 +63,8 @@
           <button type="button" class="btn ghost small" id="rec-del" hidden>声を消す</button>
         </div>
         <p class="muted small" id="voice-msg">イヤホンをつけて録ってね。1小節「カッ・カッ・カッ・カッ」と数えてから始まります。</p>
+        <label class="tempo">ずれ調整 <input type="range" id="voice-offset" min="-300" max="300" step="10" aria-describedby="voice-offset-out"> <output id="voice-offset-out">0</output></label>
+        <p class="muted small">声が曲よりおくれて聞こえたら右へ（声を早める）、早く聞こえたら左へ。この端末に覚えておきます。</p>
         <p class="muted small">🔒 声はこの端末の中だけ。サーバーには送りません（ページを閉じると消えます）。声は変えません。子どもの声は、書き出しに入りません。</p>
       </div>
     </section>

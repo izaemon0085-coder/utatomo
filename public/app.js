@@ -261,12 +261,12 @@ const player = {
     this.cache.set(key, b);
     return b;
   },
-  start(when, buf, dest = this.master) {
+  start(when, buf, dest = this.master, offset = 0) {
     const s = this.ctx.createBufferSource();
     s.buffer = buf;
     s.connect(dest);
     s.onended = () => this.sources.delete(s);
-    s.start(when);
+    s.start(when, offset);
     this.sources.add(s);
   },
   // 次に鳴らす小節（「えらんだ部分だけくり返す」のときは、その部分の中をまわる）
@@ -290,6 +290,8 @@ const player = {
     return { n, k, ...bars[n] };
   },
   schedule() {
+    // おわりは、画面を描く動き（見えていないと止まる）だけにたよらず、ここでもたしかめる
+    if (this.endAt && this.ctx.currentTime >= this.endAt) { this.stop(); return; }
     const ahead = this.ctx.currentTime + 0.35;
     while (this.playing && !this.endAt && this.nextTime < ahead) {
       const b = this.nextBar();
@@ -300,7 +302,11 @@ const player = {
       }
       // 録った声は、部分の頭から鳴らす（録っている部分の声は鳴らさない）
       const v = voices().get(b.section);
-      if (v && b.k === 0 && this.only === null) this.start(this.nextTime, v, this.voiceGain);
+      if (v && b.k === 0 && this.only === null) {
+        const shift = voiceShift(); // ずれ調整：＋なら声を早める（頭を少し切る）、−ならおそくする
+        if (shift >= 0) this.start(this.nextTime, v, this.voiceGain, shift);
+        else this.start(this.nextTime - shift, v, this.voiceGain);
+      }
       this.queue.push({ t: this.nextTime, n: b.n, k: b.k, section: b.section });
       this.nextTime += M.barSeconds(song.tempo);
     }
@@ -388,10 +394,26 @@ function renderVoice() {
   if (rec.on) return;
   $('#rec').textContent = has ? '🎙️ この部分を録りなおす' : '🎙️ この部分を録る';
   if (state.me?.child) $('#voice-msg').textContent = '録った声は、うたとも の中で聞くだけです（子どもの声は書き出しに入りません）。イヤホンをつけて録ってね。';
+  else if (!state.me) $('#voice-msg').textContent = 'ためしに録って、曲といっしょに聞けます。書き出しに声を入れるのは、ともはねでログインしてから（子どもの声を外に出さないため）。イヤホンをつけてね。';
 }
+// 声を書き出しに入れてよいか：ログインした中高生・大人だけ
+const voiceExportable = () => Boolean(state.me && !state.me.child);
+// ずれ調整（ミリ秒）。この端末にだけ覚えておく（マイクのおくれは端末ごとにちがうので）
+let voiceOffsetMs = 0;
+try { voiceOffsetMs = Math.max(-300, Math.min(300, Number(localStorage.getItem('utatomo-voice-offset')) || 0)); } catch { /* 覚えられなくてもよい */ }
+const voiceShift = () => voiceOffsetMs / 1000;
+function renderOffset() {
+  $('#voice-offset').value = voiceOffsetMs;
+  $('#voice-offset-out').textContent = voiceOffsetMs === 0 ? '0' : voiceOffsetMs > 0 ? `声を ${voiceOffsetMs}ミリ秒 早める` : `声を ${-voiceOffsetMs}ミリ秒 おそくする`;
+}
+$('#voice-offset').oninput = () => {
+  voiceOffsetMs = Number($('#voice-offset').value);
+  try { localStorage.setItem('utatomo-voice-offset', String(voiceOffsetMs)); } catch { /* なし */ }
+  renderOffset();
+};
+renderOffset();
 async function startRecording() {
   showError();
-  if (!state.me) { say('声を録るときは「ともはねでログイン」してね（子どもの声を外に出さないために、年れいの区分を見ます）。'); return; }
   if (!navigator.mediaDevices?.getUserMedia) { showError('このブラウザでは録音できません'); return; }
   player.stop();
   const ctx = player.ensure();
@@ -448,10 +470,10 @@ function finishRecording(section) {
     return;
   }
   voices().set(section, out);
-  $('#voice-msg').textContent = `「${M.PARTS[song.sections[section].part].label}」の声を録ったよ。▶ で曲といっしょに聞けます`;
-  say('いい声！ ほかの部分も録ってみてね♪');
   renderSections();
   renderVoice();
+  $('#voice-msg').textContent = `「${M.PARTS[song.sections[section].part].label}」の声を録ったよ。▶ で曲といっしょに聞けます。ずれていたら「ずれ調整」で合わせてね`;
+  say('いい声！ ほかの部分も録ってみてね♪');
 }
 $('#rec').onclick = () => {
   if (rec.on) { player.stop(); return; }
@@ -487,11 +509,12 @@ function fileName() {
   const t = ($('#title').value.trim() || 'うたとも').replace(/[\\/:*?"<>|\s]+/g, '_');
   return `${t}.wav`;
 }
-// 録った声を曲にまぜる（子どもの声はまぜない）。声のサンプル数のちがいは、間をとってそろえる
+// 録った声を曲にまぜる（子どもの声・ログインしていない人の声はまぜない）。声のサンプル数のちがいは、間をとってそろえる
 function mixVoices(target, r) {
   const vs = voiceStore.get(target);
-  if (!vs?.size || state.me?.child) return false;
+  if (!vs?.size || !voiceExportable()) return false;
   const barLen = Math.round(M.barSeconds(target.tempo) * r.sampleRate);
+  const shift = voiceShift() * r.sampleRate; // ずれ調整（＋なら声を早める）
   let bar = 0;
   target.sections.forEach((s, i) => {
     const v = vs.get(i);
@@ -499,9 +522,9 @@ function mixVoices(target, r) {
       const d = v.getChannelData(0);
       const ratio = v.sampleRate / r.sampleRate;
       const off = bar * barLen;
-      const n = Math.min(r.left.length - off, Math.floor(d.length / ratio));
-      for (let j = 0; j < n; j++) {
-        const x = j * ratio;
+      const n = Math.min(r.left.length - off, Math.floor(d.length / ratio - shift));
+      for (let j = Math.max(0, Math.ceil(-shift)); j < n; j++) {
+        const x = (j + shift) * ratio;
         const i0 = Math.floor(x);
         const y = d[i0] + (d[Math.min(d.length - 1, i0 + 1)] - d[i0]) * (x - i0);
         r.left[off + j] += y * 0.9;
@@ -540,7 +563,8 @@ $('#export').onclick = async () => {
     const f = await makeWav();
     download(f);
     const hasVoice = voices().size > 0;
-    const voiceNote = hasVoice ? (state.me?.child ? '（声は入れていません。子どもの声は外に出しません）' : '（録った声も入っています）') : '';
+    const voiceNote = !hasVoice ? '' : voiceExportable() ? '（録った声も入っています）'
+      : state.me?.child ? '（声は入れていません。子どもの声は外に出しません）' : '（声は入れていません。声を入れるのは、ともはねでログインしてから）';
     $('#out-msg').textContent = `💾 「${f.name}」を書き出したよ（約${Math.round(exportSeconds())}秒）${voiceNote}。透かしはありません。`;
     say('書き出したよ！SNS にのせるときは、クレジットもいっしょにコピーしてね♪');
   } catch (e) { showError(e.message); }
