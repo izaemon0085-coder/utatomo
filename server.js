@@ -6,6 +6,7 @@ import { readFile } from 'node:fs/promises';
 import { extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createStudio, HttpError, MAX_SONGS, TITLE_MAX } from './studio.js';
+import { createRooms } from './rooms.js';
 
 const ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)));
 const PUBLIC = join(ROOT, 'public');
@@ -41,7 +42,7 @@ const readCookie = (req, name) => {
   return null;
 };
 
-export function createApp({ tomohaneUrl = TOMOHANE_URL, linkSecret = LINK_SECRET, fetchImpl = fetch, studio = createStudio(), vtomoUrl = VTOMO_URL, tomoruUrl = TOMORU_URL } = {}) {
+export function createApp({ tomohaneUrl = TOMOHANE_URL, linkSecret = LINK_SECRET, fetchImpl = fetch, studio = createStudio(), vtomoUrl = VTOMO_URL, tomoruUrl = TOMORU_URL, rooms = createRooms({ studio }) } = {}) {
   const sessions = new Map(); // トークン → gameId
   const me = (req) => {
     const id = sessions.get(readCookie(req, COOKIE));
@@ -60,6 +61,14 @@ export function createApp({ tomohaneUrl = TOMOHANE_URL, linkSecret = LINK_SECRET
     ['POST', /^\/api\/songs$/, ({ req, body }) => [201, studio.save(need(req), { title: body.title, song: body.song })]],
     ['POST', /^\/api\/songs\/([\w-]+)$/, ({ req, params, body }) => studio.save(need(req), { id: params[0], title: body.title, song: body.song })],
     ['POST', /^\/api\/songs\/([\w-]+)\/delete$/, ({ req, params }) => studio.remove(need(req), params[0])],
+    // みんなで1曲（ルーム）
+    ['GET', /^\/api\/rooms$/, ({ req }) => rooms.list(need(req))],
+    ['POST', /^\/api\/rooms$/, ({ req, body }) => [201, rooms.create(need(req), body)]],
+    ['GET', /^\/api\/rooms\/(\w{6})$/, ({ req, params }) => rooms.get(need(req), params[0])],
+    ['POST', /^\/api\/rooms\/(\w{6})\/claim$/, ({ req, params, body }) => rooms.claim(need(req), params[0], body.part)],
+    ['POST', /^\/api\/rooms\/(\w{6})\/release$/, ({ req, params }) => rooms.release(need(req), params[0])],
+    ['POST', /^\/api\/rooms\/(\w{6})\/edit$/, ({ req, params, body }) => rooms.edit(need(req), params[0], body)],
+    ['POST', /^\/api\/rooms\/(\w{6})\/delete$/, ({ req, params }) => rooms.remove(need(req), params[0])],
   ];
 
   const sendJson = (res, status, data) => {

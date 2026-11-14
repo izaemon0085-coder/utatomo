@@ -130,6 +130,44 @@
       </div>
       <p class="muted small" id="live-msg" aria-live="polite"></p>
     </section>
+
+    <section class="card" aria-labelledby="h-room">
+      <h2 id="h-room"><span class="no">8</span> みんなで1曲 👥</h2>
+      <p class="muted small">ルームに集まって、1人1パート（リズム・ベース・コード・メロディ・キラキラ・歌詞）ずつ受けもって、1曲にします。お誕生日のお祝いソングなどに。同じ年齢の区分の人どうしで作ります。</p>
+      <p class="muted small" id="room-login">ルームに入るには「ともはねでログイン」してね。</p>
+      <div id="room-lobby" hidden>
+        <div class="room-row">
+          <label class="title-field">ルームの名前<input type="text" id="room-title" maxlength="20" placeholder="例：〇〇さんお誕生日の曲" autocomplete="off"></label>
+          <button type="button" class="btn" id="room-create">＋ ルームを作る</button>
+        </div>
+        <p class="muted small">雰囲気と長さは、① でえらんでいるものになります。</p>
+        <div class="room-row">
+          <label class="title-field">ルーム番号で入る<input type="text" id="room-code" maxlength="6" placeholder="例：AB23CD" autocomplete="off" autocapitalize="characters"></label>
+          <button type="button" class="btn ghost" id="room-join">入る</button>
+        </div>
+        <ul class="my-songs" id="room-list"></ul>
+      </div>
+      <div id="room-view" hidden>
+        <p class="room-head"><strong id="room-name"></strong> <span class="room-code" id="room-code-show"></span></p>
+        <p class="muted small" id="room-info"></p>
+        <div class="btn-row">
+          <a class="btn ghost small" id="room-cafe" href="#" target="_blank" rel="noopener">☕ カフェで仲間をさがす</a>
+          <button type="button" class="btn ghost small" id="room-listen">▶ みんなの曲を聞く</button>
+          <button type="button" class="btn ghost small" id="room-back">← ルームの一覧へ</button>
+        </div>
+        <div class="room-parts" id="room-parts"></div>
+        <div id="room-edit" hidden>
+          <h3 id="room-edit-title"></h3>
+          <div class="calls" id="room-fields"></div>
+          <div class="btn-row">
+            <button type="button" class="btn" id="room-send">💾 パートをとどける</button>
+            <button type="button" class="btn ghost small" id="room-release">パートをはなす</button>
+          </div>
+        </div>
+        <div class="btn-row"><button type="button" class="btn ghost small danger" id="room-delete" hidden>ルームをしまう</button></div>
+        <p class="muted small" id="room-msg" aria-live="polite"></p>
+      </div>
+    </section>
   </main>
 
   <div class="transport" role="group" aria-label="再生">

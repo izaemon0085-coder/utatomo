@@ -163,6 +163,8 @@ function renderMe() {
   $('#me-line').textContent = me ? `${me.name} さん（${me.ageGroup}）でログイン中` : 'ログインしなくても、作る・聞く・書き出すはできます。保存はログインしてから。';
   $('#my-songs-box').hidden = !me;
   renderVoice();
+  if (!me && room) leaveRoom();
+  renderRoomLobby();
   if (!me) return;
   $('#my-count').textContent = `（${state.songs.length} / ${state.max}曲）`;
   $('#my-songs').replaceChildren(...(state.songs.length ? state.songs.map((s) => {
@@ -787,6 +789,148 @@ $('#copy-live').onclick = async () => {
     await navigator.clipboard.writeText($('#live-code').value);
     $('#live-msg').textContent = '📋 ライブコードをコピーしたよ';
   } catch { $('#live-code').select(); $('#live-msg').textContent = 'コピーできなかったので、選んでおいたよ。長押しでコピーしてね'; }
+};
+
+// ── みんなで1曲（ルーム） ──
+const PART_LABEL = { ...Object.fromEntries(M.INSTS.map((i) => [i, `${M.PANELS[i].emoji} ${M.PANELS[i].label}`])), lyric: '✏️ 歌詞' };
+const ROOM_PARTS = [...M.INSTS, 'lyric'];
+let room = null; // いま入っているルーム
+let roomTimer = 0;
+let roomDirty = false; // 自分のパートを書きかえ中（まだとどけていない）
+async function renderRoomLobby() {
+  const inRoom = Boolean(room);
+  $('#room-login').hidden = Boolean(state.me);
+  $('#room-lobby').hidden = !state.me || inRoom;
+  $('#room-view').hidden = !state.me || !inRoom;
+  if (!state.me || inRoom) return;
+  try {
+    const { rooms } = await api('/rooms');
+    $('#room-list').replaceChildren(...(rooms.length ? rooms.map((r) => {
+      const b = el('button', { type: 'button', className: 'btn ghost small', textContent: r.joined ? 'もどる' : '入る' });
+      b.onclick = () => openRoom(r.code);
+      return el('li', {}, [el('span', { className: 'name', textContent: `👥 ${r.title}` }), el('span', { className: 'muted small', textContent: `${r.owner} さん・あき ${r.free} パート` }), b]);
+    }) : [el('li', { className: 'muted small', textContent: 'いまはルームがありません。作ってみよう！' })]));
+  } catch (e) { showError(e.message); }
+}
+async function openRoom(code) {
+  showError();
+  try {
+    room = await api(`/rooms/${encodeURIComponent(code.toUpperCase())}`);
+    roomDirty = false;
+    renderRoom();
+    renderRoomLobby();
+    clearInterval(roomTimer);
+    roomTimer = setInterval(pollRoom, 4000); // みんなの変更を見に行く
+  } catch (e) { $('#room-msg').textContent = ''; showError(e.message); }
+}
+async function pollRoom() {
+  if (!room || document.hidden) return;
+  try {
+    const r = await api(`/rooms/${room.code}`);
+    if (r.version !== room.version) {
+      room = r;
+      renderRoom({ keepMine: roomDirty });
+    }
+  } catch { leaveRoom(); }
+}
+function leaveRoom() {
+  clearInterval(roomTimer);
+  room = null;
+  renderRoomLobby();
+}
+function renderRoom({ keepMine = false } = {}) {
+  const r = room;
+  $('#room-name').textContent = `👥 ${r.title}`;
+  $('#room-code-show').textContent = r.code;
+  const free = ROOM_PARTS.filter((p) => !r.parts[p]).length;
+  $('#room-info').textContent = `作った人：${r.owner} さん・${M.MOODS[r.song.mood].label}・約${Math.round(M.songSeconds(r.song))}秒・あき ${free} パート`;
+  const draft = `🎵 うたとも の「みんなで1曲」で「${r.title}」を作っています！ ルーム番号 ${r.code} で入って、パートを受けもってね♪ #うたとも`;
+  $('#room-cafe').href = tomohaneUrl(`/cafe.html?draft=${encodeURIComponent(draft)}`);
+  $('#room-delete').hidden = !r.mine;
+  $('#room-parts').replaceChildren(...ROOM_PARTS.map((p) => {
+    const who = r.parts[p];
+    const mine = r.myPart === p;
+    const box = el('div', { className: `room-part${mine ? ' mine' : ''}` }, [el('strong', { textContent: PART_LABEL[p] }), el('span', { className: 'who', textContent: who ? `${who} さん${mine ? '（わたし）' : ''}` : 'あいています' })]);
+    if (!who) {
+      const b = el('button', { type: 'button', className: 'btn small', textContent: '受けもつ' });
+      b.onclick = () => roomAction('claim', { part: p }, `「${PART_LABEL[p]}」を受けもったよ！`);
+      box.append(b);
+    }
+    return box;
+  }));
+  $('#room-edit').hidden = !r.myPart;
+  if (r.myPart && !keepMine) renderRoomFields();
+}
+// 自分のパートの入力：楽器なら部分ごとにパネル、歌詞なら部分ごとに文字
+function renderRoomFields() {
+  const r = room;
+  const p = r.myPart;
+  $('#room-edit-title').textContent = `わたしのパート：${PART_LABEL[p]}`;
+  $('#room-fields').replaceChildren(...r.song.sections.map((s, i) => {
+    const name = `${i + 1}. ${M.PARTS[s.part].label}`;
+    let field;
+    if (p === 'lyric') {
+      field = el('textarea', { rows: 2, maxLength: 120, value: s.lyric || '', placeholder: '歌詞（4行・80文字まで）' });
+    } else {
+      field = el('select', {}, [el('option', { value: '', textContent: 'なし' }), ...Object.entries(M.PANELS[p].options).map(([id, o]) => el('option', { value: id, textContent: o.label }))]);
+      field.value = s.panels[p] || '';
+    }
+    field.dataset.index = i;
+    field.setAttribute('aria-label', `${name}の${PART_LABEL[p]}`);
+    field.oninput = () => { roomDirty = true; };
+    return el('label', {}, [name, field]);
+  }));
+}
+async function roomAction(action, body, msg) {
+  showError();
+  try {
+    room = await api(`/rooms/${room.code}/${action}`, { method: 'POST', body: body || {} });
+    roomDirty = false;
+    renderRoom();
+    if (msg) $('#room-msg').textContent = msg;
+  } catch (e) { showError(e.message); }
+}
+$('#room-send').onclick = () => {
+  const p = room.myPart;
+  const values = [...document.querySelectorAll('#room-fields [data-index]')].map((f) => (p === 'lyric' ? f.value : f.value || null));
+  if (p === 'lyric') {
+    const c = precheck(values.join('\n'));
+    if (c.level === 'block') { showError(`この歌詞は入れられません（${c.reason}）`); return; }
+    if (c.lines.length) $('#room-msg').textContent = c.lines.map((l) => `${(AGENTS[l.agentId] || ['💬'])[0]} ${l.text}`).join(' ');
+  }
+  roomAction('edit', { part: p, values, version: room.version }, `💾 「${PART_LABEL[p]}」をとどけたよ。▶ で、みんなの曲を聞いてみてね`);
+};
+$('#room-release').onclick = () => roomAction('release', null, 'パートをはなしたよ');
+$('#room-listen').onclick = () => {
+  player.stop();
+  song = structuredClone(room.song);
+  length = song.length;
+  selected = 0;
+  editingId = null;
+  setKey = null;
+  $('#title').value = room.title.slice(0, 20);
+  renderAll();
+  say(`「${room.title}」をひらいたよ。みんなのパートが入っているよ♪ 書き出しや動画にもできるよ。`);
+  player.play();
+};
+$('#room-back').onclick = leaveRoom;
+$('#room-delete').onclick = async () => {
+  if (!confirm(`ルーム「${room.title}」をしまいますか？（もとにもどせません）`)) return;
+  try { await api(`/rooms/${room.code}/delete`, { method: 'POST' }); leaveRoom(); } catch (e) { showError(e.message); }
+};
+$('#room-create').onclick = async () => {
+  showError();
+  try {
+    room = await api('/rooms', { method: 'POST', body: { title: $('#room-title').value, mood: song.mood, length } });
+    $('#room-title').value = '';
+    await openRoom(room.code);
+    $('#room-msg').textContent = 'ルームができたよ！ まずはコードを受けもっています。カフェで仲間をさがしてみてね';
+  } catch (e) { showError(e.message); }
+};
+$('#room-join').onclick = () => {
+  const code = $('#room-code').value.trim().toUpperCase();
+  if (!/^\w{6}$/.test(code)) { showError('ルーム番号は6文字です'); return; }
+  openRoom(code);
 };
 
 // ── 操作 ──
