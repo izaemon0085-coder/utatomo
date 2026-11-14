@@ -1,9 +1,11 @@
 // うたとも の画面：雰囲気と長さ → おまかせで組み立て → パネルをタップ → 再生（Web Audio）→ 書き出し・保存
 import * as M from './music.js';
 import { precheck } from './precheck.js';
+import * as V from './video.js';
+import { renderStand, checkLook, randomLook } from './parts.js';
 
 const $ = (s) => document.querySelector(s);
-let config = { tomohaneUrl: 'http://localhost:3000', max: 10, titleMax: 20 };
+let config = { tomohaneUrl: 'http://localhost:3000', vtomoUrl: 'http://localhost:4200', max: 10, titleMax: 20 };
 let state = { me: null, songs: [] };
 let song = M.buildBgm('bright', 30);
 let selected = 0; // いま直している部分
@@ -129,6 +131,7 @@ function lyricInfo() {
     return el('div', { className: `agent ${c.level}` }, [el('span', { textContent: emoji }), el('span', { textContent: `${name}：${l.text}` })]);
   }));
   if (c.level === 'block') $('#check-box').append(el('p', { className: 'error', textContent: 'この歌詞のままでは保存できません。' }));
+  drawPreview();
 }
 $('#lyric').oninput = () => {
   const sec = song.sections[selected];
@@ -150,6 +153,7 @@ function renderOut() {
   $('#credit').textContent = M.creditText(t);
   $('#to-plaza').href = tomohaneUrl(`/plaza.html?draft=${encodeURIComponent(M.creditText(t))}`);
   $('#save').textContent = editingId ? '☁️ 上書き保存' : '☁️ 保存';
+  drawPreview();
 }
 function renderMe() {
   const me = state.me;
@@ -612,6 +616,135 @@ function unstash() {
   return false;
 }
 
+// ── 動画（Vとも のキャラと） ──
+let format = 'tall';
+let look = null; // キャラの部品のえらび方。Vとも から ?look=… で来る
+let charaImg = null;
+const video = { on: false, rec: null, timer: 0, src: null, file: null };
+// Vとも から連れてきたキャラ（?look=…）。このタブの中にとっておく
+function takeLookFromUrl() {
+  const p = new URLSearchParams(location.search).get('look');
+  if (p) {
+    try {
+      const json = JSON.parse(decodeURIComponent(escape(atob(p.replace(/-/g, '+').replace(/_/g, '/')))));
+      const r = checkLook(json);
+      if (r.ok) sessionStorage.setItem('ut_look', JSON.stringify({ look: r.look, from: 'vtomo' }));
+    } catch { /* こわれていたら使わない */ }
+    history.replaceState(null, '', location.pathname);
+  }
+  try {
+    const saved = JSON.parse(sessionStorage.getItem('ut_look') || 'null');
+    if (saved && checkLook(saved.look).ok) return saved;
+  } catch { /* なし */ }
+  return null;
+}
+function setLook(l, from) {
+  look = l;
+  try { sessionStorage.setItem('ut_look', JSON.stringify(l ? { look: l, from } : null)); } catch { /* なし */ }
+  $('#chara-line').textContent = !l ? 'キャラなしで、ステージだけの動画にします。'
+    : from === 'vtomo' ? '🦫 Vとも から来たキャラです。' : '🎲 おまかせのキャラです。Vとも で自分のキャラを作って連れてくることもできます。';
+  if (!l) { charaImg = null; drawPreview(); return; }
+  const img = new Image();
+  img.onload = () => { charaImg = img; drawPreview(); };
+  img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(renderStand(l))}`;
+}
+function renderFormats() {
+  radioChips($('#formats'), Object.entries(V.FORMATS).map(([id, f]) => [id, `${id === 'tall' ? '📱' : '🖥️'} ${f.label}`]), format, (id) => {
+    format = id;
+    renderFormats();
+    drawPreview();
+  });
+}
+// 見本：いまえらんでいる部分のまん中あたりを描く
+function drawPreview(t) {
+  if (video.on) return;
+  const c = $('#stage');
+  const f = V.FORMATS[format];
+  if (c.width !== f.w || c.height !== f.h) { c.width = f.w; c.height = f.h; }
+  let at = t;
+  if (at == null) {
+    const startBar = song.sections.slice(0, selected).reduce((n, s) => n + s.bars, 0);
+    at = (startBar + song.sections[selected].bars * 0.3) * M.barSeconds(song.tempo);
+  }
+  V.drawFrame(c.getContext('2d'), { format, t: at, song, chara: charaImg, title: $('#title').value.trim(), lyrics: $('#video-lyrics').checked, guide: $('#video-guide').checked });
+}
+async function startVideo() {
+  showError();
+  const type = window.MediaRecorder ? V.pickVideoType((m) => MediaRecorder.isTypeSupported(m)) : '';
+  const c = $('#stage');
+  if (!type || !c.captureStream) { showError('このブラウザでは動画を書き出せません（パソコンの Chrome などでためしてね）'); return; }
+  player.stop();
+  const ctx = player.ensure();
+  $('#video-msg').textContent = '🎵 音を作っています…';
+  await new Promise((r) => setTimeout(r, 30));
+  const r = M.renderSong(song, { sampleRate: ctx.sampleRate });
+  const withVoice = mixVoices(song, r);
+  const buf = ctx.createBuffer(2, r.left.length, r.sampleRate);
+  buf.copyToChannel(r.left, 0);
+  buf.copyToChannel(r.right, 1);
+  const f = V.FORMATS[format];
+  c.width = f.w;
+  c.height = f.h;
+  const dest = ctx.createMediaStreamDestination();
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.connect(dest);
+  src.connect(ctx.destination); // 書き出しながら、音も聞こえる
+  const stream = new MediaStream([...c.captureStream(30).getVideoTracks(), ...dest.stream.getAudioTracks()]);
+  const chunks = [];
+  const rec = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 4_000_000 });
+  rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+  const g = c.getContext('2d');
+  const title = $('#title').value.trim();
+  const lyrics = $('#video-lyrics').checked;
+  const total = r.left.length / r.sampleRate;
+  const t0 = ctx.currentTime + 0.15;
+  Object.assign(video, { on: true, rec, src });
+  $('#video-rec').textContent = '■ 書き出しをやめる';
+  $('#video-rec').classList.add('on');
+  rec.onstop = () => {
+    clearInterval(video.timer);
+    const done = video.on && !video.cancel;
+    Object.assign(video, { on: false, rec: null, src: null, cancel: false });
+    $('#video-rec').textContent = '🎬 動画を書き出す';
+    $('#video-rec').classList.remove('on');
+    if (!done) { $('#video-msg').textContent = '書き出しをやめたよ'; drawPreview(); return; }
+    const name = `${(title || 'うたとも').replace(/[\\/:*?"<>|\s]+/g, '_')}_${f.short}.${V.videoExt(type)}`;
+    video.file = new File(chunks, name, { type: type.split(';')[0] });
+    download(video.file);
+    $('#video-share').hidden = !(navigator.canShare && navigator.canShare({ files: [video.file] }));
+    const voiceNote = voices().size && !withVoice ? '（声は入れていません）' : '';
+    $('#video-msg').textContent = `🎬 「${name}」を書き出したよ${voiceNote}。SNS にのせるときは、クレジットもいっしょにコピーしてね。`;
+    say('動画ができたよ！ キャラもステージでノリノリだったね♪');
+    drawPreview();
+  };
+  rec.start(1000);
+  src.start(t0);
+  // 画面が見えていなくても止まりにくいように、タイマーで1コマずつ描く
+  video.timer = setInterval(() => {
+    const t = ctx.currentTime - t0;
+    V.drawFrame(g, { format, t: Math.max(0, t), song, chara: charaImg, title, lyrics, guide: false });
+    $('#video-msg').textContent = `🎬 書き出し中… ${fmt(Math.max(0, t))} / ${fmt(total)}`;
+    if (t >= total + 0.2 && rec.state === 'recording') rec.stop();
+  }, 1000 / 30);
+}
+$('#video-rec').onclick = () => {
+  if (video.on) {
+    video.cancel = true;
+    try { video.src.stop(); } catch { /* なし */ }
+    video.rec.stop();
+    return;
+  }
+  startVideo();
+};
+$('#video-share').onclick = async () => {
+  try { await navigator.share({ files: [video.file], text: M.creditText($('#title').value) }); } catch (e) { if (e.name !== 'AbortError') showError('シェアできませんでした'); }
+};
+$('#chara-random').onclick = () => setLook(randomLook(), 'random');
+$('#chara-none').onclick = () => setLook(null);
+$('#video-lyrics').onchange = () => drawPreview();
+$('#video-guide').onchange = () => drawPreview();
+
 // ── 操作 ──
 $('#auto').onclick = () => {
   const keep = player.playing;
@@ -652,8 +785,15 @@ async function loadState() {
   try { config = await api('/config'); } catch { /* ふだんの値のまま */ }
   $('#back-tomohane').href = tomohaneUrl('/');
   $('#signin-link').href = tomohaneUrl('/api/link/utatomo-start');
+  const vt = new URL('/', config.vtomoUrl);
+  if (['localhost', '127.0.0.1'].includes(vt.hostname) && !['localhost', '127.0.0.1'].includes(location.hostname)) vt.hostname = location.hostname;
+  $('#to-vtomo').href = vt.href;
+  renderFormats();
+  const fromVtomo = takeLookFromUrl();
   const restored = unstash();
   renderAll();
   try { await loadState(); } catch (e) { showError(e.message); }
+  setLook(fromVtomo ? fromVtomo.look : randomLook(), fromVtomo ? fromVtomo.from : 'random');
+  if (fromVtomo?.from === 'vtomo' && !restored) say('Vとも からキャラが来てくれたよ！ 下の「動画にする」で、いっしょにステージに立てるよ♪');
   if (restored) say('おかえり♪ 作りかけの曲をもどしておいたよ。「保存」を押してね。');
 })();

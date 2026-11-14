@@ -90,6 +90,26 @@
       </div>
       <p class="muted small">音はすべて、うたとも の中で作った音です（録音した曲・外のサービス・AI は使っていません）。作った曲は、作った人のものです。</p>
     </section>
+
+    <section class="card" aria-labelledby="h-video">
+      <h2 id="h-video"><span class="no">6</span> 動画にする（Vとも のキャラと）</h2>
+      <p class="muted small">キャラがステージで曲に合わせてゆれます。歌詞は字幕になります。SNS にそのままのせられる形で書き出します。</p>
+      <div class="chips" id="formats" role="radiogroup" aria-label="動画の形"></div>
+      <div class="video-wrap"><canvas id="stage" width="720" height="1280" aria-label="動画の見本"></canvas></div>
+      <p class="muted small" id="chara-line"></p>
+      <div class="btn-row">
+        <a class="btn ghost small" id="to-vtomo" href="#">🦫 Vとも でキャラを作る・えらぶ</a>
+        <button type="button" class="btn ghost small" id="chara-random">🎲 おまかせのキャラ</button>
+        <button type="button" class="btn ghost small" id="chara-none">キャラなし</button>
+      </div>
+      <label class="check"><input type="checkbox" id="video-lyrics" checked> 歌詞を字幕にする</label>
+      <label class="check"><input type="checkbox" id="video-guide" checked> セーフゾーン（SNS のボタンにかくれない所）を見る ※書き出しには入りません</label>
+      <div class="btn-row">
+        <button type="button" class="btn" id="video-rec">🎬 動画を書き出す</button>
+        <button type="button" class="btn ghost" id="video-share" hidden>📤 動画をシェア</button>
+      </div>
+      <p class="muted small" id="video-msg" aria-live="polite">書き出しには、曲と同じ長さの時間がかかります（そのあいだ、この画面を開いたままにしてね）。</p>
+    </section>
   </main>
 
   <div class="transport" role="group" aria-label="再生">
