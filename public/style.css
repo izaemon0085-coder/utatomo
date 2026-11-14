@@ -122,3 +122,27 @@ p { margin: 4px 0; }
 .room-part .who { font-size: .85rem; color: var(--muted); }
 .room-fields textarea, #room-fields textarea { width: 100%; border: 2px solid var(--border); border-radius: 10px; padding: 6px 8px; background: var(--surface); color: var(--text); font: inherit; }
 .btn.danger { color: var(--error); }
+
+/* 公認の音：パネルの下に ⭐ の行・音を作るマス */
+.row-wrap { display: grid; gap: 4px; }
+.stars-row { grid-template-columns: 64px 1fr; }
+.stars-row .lab { font-size: .72rem; }
+.stars { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
+.cell.star { min-height: 44px; min-width: 88px; flex: none; }
+.sgrid { background: var(--board); border-radius: 12px; padding: 8px; display: grid; gap: 4px; margin: 8px 0; }
+.srow { display: grid; grid-template-columns: 4.6em repeat(16, minmax(0, 1fr)); gap: 2px; align-items: center; }
+.slab { color: #fff; font-size: .72rem; font-weight: 700; line-height: 1.1; }
+.scell { aspect-ratio: 1 / 1.4; min-width: 0; padding: 0; border: 1px solid rgba(255,255,255,.18); border-radius: 4px; background: rgba(255,255,255,.06); cursor: pointer; touch-action: manipulation; }
+.scell.beat { border-left: 2px solid rgba(255,255,255,.55); }
+.scell[aria-pressed="true"] { background: var(--c); border-color: #fff; }
+.scell:focus-visible { outline: 2px solid #f2a93b; outline-offset: 1px; }
+.consents { border: 1px solid var(--border); border-radius: 12px; margin: 8px 0; padding: 6px 12px; }
+.consents legend { font-weight: 700; font-size: .92rem; padding: 0 4px; }
+.my-songs .ok { color: #2f9e6b; font-weight: 700; }
+.my-songs .no { color: var(--muted); }
+@media (max-width: 560px) {
+  .stars-row { grid-template-columns: 50px 1fr; }
+  .srow { grid-template-columns: 3.6em repeat(8, minmax(0, 1fr)); gap: 3px; margin-bottom: 4px; } /* スマホ：16マスを8マス×2段に（指で押せる大きさ） */
+  .srow .slab { grid-row: span 2; }
+  .slab { font-size: .64rem; }
+}

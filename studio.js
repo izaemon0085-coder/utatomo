@@ -66,11 +66,11 @@ export function createStudio({ now = () => Date.now() } = {}) {
   };
 
   return {
-    upsertPerson({ gameId, name, ageGroup }) {
+    upsertPerson({ gameId, name, ageGroup, admin }) {
       if (!/^[\w-]{3,40}$/.test(String(gameId)) || !AGE[ageGroup]) throw new HttpError(400, 'ともはねの情報が正しくありません');
       const n = String(name ?? '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 20);
       if (!n) throw new HttpError(400, 'ともはねの情報が正しくありません');
-      const p = { gameId, name: n, ageGroup };
+      const p = { gameId, name: n, ageGroup, admin: admin === true }; // admin：ともはね の運営（公認の音を聞いて決める）
       people.set(gameId, p);
       return p;
     },
@@ -81,7 +81,7 @@ export function createStudio({ now = () => Date.now() } = {}) {
       if (!me) return { me: null, songs: [], max: MAX_SONGS, guide: GUIDE, say: SAY.guest };
       const list = mine(me.gameId);
       return {
-        me: { name: me.name, ageGroup: AGE[me.ageGroup], child: me.ageGroup === 'child' }, // 子どもの声は外へ書き出さない（計画書の守る線）
+        me: { name: me.name, ageGroup: AGE[me.ageGroup], child: me.ageGroup === 'child', admin: me.admin }, // 子どもの声は外へ書き出さない（計画書の守る線）
         songs: list.map(pub),
         max: MAX_SONGS,
         guide: GUIDE,
@@ -89,17 +89,18 @@ export function createStudio({ now = () => Date.now() } = {}) {
       };
     },
 
-    // id があれば上書き、なければ新しく保存
-    save(meId, { id, title, song: input } = {}) {
+    // id があれば上書き、なければ新しく保存。resolve：公認の音を、運営が公認したものに置きかえる（sounds.js）
+    save(meId, { id, title, song: input } = {}, { resolve = (x) => x } = {}) {
       person(meId);
       const t = checkTitle(title);
-      const s = song(input);
       const at = now();
       if (id) {
         const x = own(meId, String(id));
+        const s = resolve(song(input), x.song.sounds || {});
         Object.assign(x, { title: t, song: s, updatedAt: at });
         return { song: pub(x), say: SAY.saved };
       }
+      const s = resolve(song(input));
       if (mine(meId).length >= MAX_SONGS) throw new HttpError(409, `曲は${MAX_SONGS}曲までです。どれかを消すか、上書きしてください`);
       if (songs.size >= MAX_TOTAL) throw new HttpError(503, 'β版の保存場所がいっぱいです。運営に知らせてください');
       const x = { id: newId(), ownerId: meId, title: t, song: s, createdAt: at, updatedAt: at };

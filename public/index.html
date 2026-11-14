@@ -168,6 +168,37 @@
         <p class="muted small" id="room-msg" aria-live="polite"></p>
       </div>
     </section>
+
+    <section class="card" aria-labelledby="h-sound">
+      <h2 id="h-sound"><span class="no">9</span> 公認の音 ⭐</h2>
+      <p class="muted small">みんなが作って「使ってOK」に同意し、運営が聞いて公認した音です。③ のパネルに ⭐ つきでならびます。使うと、クレジットに作った人の名前が入ります。</p>
+      <p class="muted small" id="sound-count"></p>
+      <h3>🛠️ 音を作って出す</h3>
+      <p class="muted small" id="sound-login"></p>
+      <div id="sound-maker" hidden>
+        <div class="chips" id="sound-insts" role="radiogroup" aria-label="作る列"></div>
+        <div class="chips" id="sound-play" role="radiogroup" aria-label="コードの鳴らし方" hidden></div>
+        <div class="sgrid" id="sound-grid"></div>
+        <p class="muted small" id="sound-hint"></p>
+        <div class="btn-row">
+          <button type="button" class="btn ghost" id="sound-try">▶ ためしに聞く</button>
+          <button type="button" class="btn ghost small" id="sound-clear">ぜんぶ消す</button>
+        </div>
+        <label class="title-field">音の名前（8文字まで）<input type="text" id="sound-label" maxlength="8" placeholder="例：ずんずん" autocomplete="off"></label>
+        <fieldset class="consents" id="sound-consents"><legend>出すときの約束（3つとも）</legend></fieldset>
+        <button type="button" class="btn" id="sound-submit">📮 運営に送る</button>
+        <p class="muted small">運営が聞いて「公認」すると、みんなのパネルにならびます。取り下げると新しく使えなくなります（もう作られた曲はそのまま）。録音した音は出せません（パネルの形だけ）。</p>
+      </div>
+      <div id="my-sounds-box" hidden>
+        <h3>わたしの出した音</h3>
+        <ul class="my-songs" id="my-sounds"></ul>
+      </div>
+      <div id="admin-sounds-box" hidden>
+        <h3>🛡️ 運営：聞く前の音</h3>
+        <ul class="my-songs" id="admin-sounds"></ul>
+      </div>
+      <p class="muted small" id="sound-msg" aria-live="polite"></p>
+    </section>
   </main>
 
   <div class="transport" role="group" aria-label="再生">

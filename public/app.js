@@ -8,6 +8,7 @@ import { liveFromSong, encodeLive } from './live.js';
 const $ = (s) => document.querySelector(s);
 let config = { tomohaneUrl: 'http://localhost:3000', vtomoUrl: 'http://localhost:4200', tomoruUrl: 'http://localhost:4100', max: 10, titleMax: 20 };
 let state = { me: null, songs: [] };
+let sounds = { approved: [], mine: [], canSubmit: false, consents: {} }; // 公認の音
 let song = M.buildBgm('bright', 30);
 let selected = 0; // いま直している部分
 let editingId = null; // 保存ずみの曲を開いているときの id
@@ -108,8 +109,36 @@ function renderPad() {
       };
       row.append(c);
     }
-    return row;
+    const stars = starsFor(inst);
+    if (!stars.length) return row;
+    // 公認の音（⭐）：もとのパネルの下に、よこにならべる
+    const box = el('div', { className: 'stars' });
+    for (const x of stars) {
+      const c = el('button', { type: 'button', className: 'cell star', textContent: `⭐${x.label}` });
+      c.style.setProperty('--c', p.color);
+      c.title = `作った人：${x.by} さん`;
+      c.setAttribute('aria-pressed', String(sec.panels[inst] === x.id));
+      c.setAttribute('aria-label', `${p.label}：公認の音 ${x.label}（${x.by} さん）`);
+      c.onclick = () => {
+        const on = sec.panels[inst] !== x.id;
+        if (on) { song.sounds ??= {}; song.sounds[x.id] = { inst: x.inst, label: x.label, by: x.by, def: x.def }; }
+        sec.panels[inst] = on ? x.id : null;
+        renderPad();
+        renderOut();
+        if (!player.playing) previewPanel(inst, sec.panels[inst]);
+      };
+      box.append(c);
+    }
+    return el('div', { className: 'row-wrap' }, [row, el('div', { className: 'row stars-row' }, [el('div', { className: 'lab', textContent: '⭐公認' }), box])]);
   }));
+}
+// その列の公認の音（いま公認されているもの＋この曲に入っているもの）
+function starsFor(inst) {
+  const list = sounds.approved.filter((x) => x.inst === inst);
+  for (const [id, x] of Object.entries(song.sounds || {})) {
+    if (x.inst === inst && !list.some((y) => y.id === id)) list.push({ id, ...x });
+  }
+  return list;
 }
 // 歌詞：いまの部分の歌詞を書く。キャラが「送る前のチェック」で声をかける
 function renderLyric() {
@@ -151,8 +180,8 @@ $('#lyric').onblur = () => {
 };
 function renderOut() {
   const t = $('#title').value.trim();
-  $('#credit').textContent = M.creditText(t);
-  $('#to-plaza').href = tomohaneUrl(`/plaza.html?draft=${encodeURIComponent(M.creditText(t))}`);
+  $('#credit').textContent = M.creditText(t, song);
+  $('#to-plaza').href = tomohaneUrl(`/plaza.html?draft=${encodeURIComponent(M.creditText(t, song))}`);
   $('#save').textContent = editingId ? '☁️ 上書き保存' : '☁️ 保存';
   drawPreview();
 }
@@ -263,7 +292,7 @@ const player = {
     let b = this.cache.get(key);
     if (b) return b;
     if (this.cache.size > 240) this.cache.clear();
-    const r = M.renderBar({ inst, pattern, mood: song.mood, bar: n, tempo: song.tempo, sampleRate: this.ctx.sampleRate, fill, quiet: song.quiet });
+    const r = M.renderBar({ inst, pattern, mood: song.mood, bar: n, tempo: song.tempo, sampleRate: this.ctx.sampleRate, fill, quiet: song.quiet, sounds: song.sounds });
     b = this.ctx.createBuffer(2, r.left.length, this.ctx.sampleRate);
     b.copyToChannel(r.left, 0);
     b.copyToChannel(r.right, 1);
@@ -584,13 +613,13 @@ $('#share').onclick = async () => {
   showError();
   try {
     const f = await makeWav();
-    await navigator.share({ files: [f], text: M.creditText($('#title').value) });
+    await navigator.share({ files: [f], text: M.creditText($('#title').value, song) });
     $('#out-msg').textContent = '📤 シェアの画面を開いたよ';
   } catch (e) { if (e.name !== 'AbortError') showError('シェアできませんでした。「音を書き出す」をつかってね'); }
 };
 $('#copy-credit').onclick = async () => {
   try {
-    await navigator.clipboard.writeText(M.creditText($('#title').value));
+    await navigator.clipboard.writeText(M.creditText($('#title').value, song));
     $('#out-msg').textContent = '📋 クレジットをコピーしたよ';
   } catch { showError('コピーできませんでした。上の文字を長押ししてコピーしてね'); }
 };
@@ -743,7 +772,7 @@ $('#video-rec').onclick = () => {
   startVideo();
 };
 $('#video-share').onclick = async () => {
-  try { await navigator.share({ files: [video.file], text: M.creditText($('#title').value) }); } catch (e) { if (e.name !== 'AbortError') showError('シェアできませんでした'); }
+  try { await navigator.share({ files: [video.file], text: M.creditText($('#title').value, song) }); } catch (e) { if (e.name !== 'AbortError') showError('シェアできませんでした'); }
 };
 $('#chara-random').onclick = () => setLook(randomLook(), 'random');
 $('#chara-none').onclick = () => setLook(null);
@@ -967,6 +996,12 @@ async function loadState() {
   state = await api('/state');
   say(state.say);
   renderMe();
+  await loadSounds();
+}
+async function loadSounds() {
+  try { sounds = await api('/sounds'); } catch { /* 前のまま */ }
+  renderPad();
+  renderSounds();
 }
 
 (async () => {
@@ -985,3 +1020,147 @@ async function loadState() {
   if (fromVtomo?.from === 'vtomo' && !restored) say('Vとも からキャラが来てくれたよ！ 下の「動画にする」で、いっしょにステージに立てるよ♪');
   if (restored) say('おかえり♪ 作りかけの曲をもどしておいたよ。「保存」を押してね。');
 })();
+
+// ── 公認の音：作って出す → 運営が聞いて公認 → みんなのパネルに ⭐ でならぶ ──
+const SOUND_ROWS = {
+  rhythm: M.DRUMS.map((d) => [d, { kick: 'キック', snare: 'スネア', hat: 'ハイハット', clap: 'クラップ', rim: 'リム' }[d]]),
+  bass: [['o', '1つ上'], ['f', '5番目'], ['t', '3番目'], ['r', '根っこ']],
+  chord: [['steps', '鳴らす拍']],
+  melody: [[4, '5（高い）'], [3, '4'], [2, '3'], [1, '2'], [0, '1（低い）']],
+};
+const SOUND_HINT = {
+  rhythm: '押したところで鳴ります。4つごとの太い線が1拍です。',
+  bass: 'となりあったマスは、1つの長い音になります。音は和音に合わせて変わるので、外れません。',
+  chord: '和音を鳴らす拍をえらびます。「ふわっと」は小節の頭で長く鳴らします。',
+  melody: 'となりあったマスは、1つの長い音になります。和音の音だけなので、外れません。',
+};
+const maker = { inst: 'bass', play: 'arp', cells: new Map() }; // 行 → 鳴らす拍（Set）
+const cellsOf = (row) => {
+  if (!maker.cells.has(row)) maker.cells.set(row, new Set());
+  return maker.cells.get(row);
+};
+// マスから、音の形（music.js の checkSoundDef と同じ形）を作る
+function makerDef() {
+  const { inst } = maker;
+  if (inst === 'rhythm') return Object.fromEntries(M.DRUMS.map((d) => [d, [...cellsOf(d)]]).filter(([, v]) => v.length));
+  if (inst === 'chord') return { play: maker.play, steps: maker.play === 'pad' ? [0] : [...cellsOf('steps')] };
+  const notes = [];
+  for (const [row] of SOUND_ROWS[inst]) {
+    const on = [...cellsOf(row)].sort((a, b) => a - b);
+    for (let i = 0; i < on.length;) {
+      let j = i;
+      while (j + 1 < on.length && on[j + 1] === on[j] + 1) j++;
+      notes.push([on[i], on[j] - on[i] + 1, row]);
+      i = j + 1;
+    }
+  }
+  return { notes };
+}
+function renderMaker() {
+  const { inst } = maker;
+  radioChips($('#sound-insts'), M.SOUND_INSTS.map((i) => [i, `${M.PANELS[i].emoji} ${M.PANELS[i].label}`]), inst, (i) => {
+    maker.inst = i;
+    maker.cells.clear();
+    renderMaker();
+  });
+  $('#sound-play').hidden = inst !== 'chord';
+  if (inst === 'chord') {
+    radioChips($('#sound-play'), [['arp', '🎼 ひとつずつ'], ['stab', '🎹 いっしょに'], ['pad', '☁️ ふわっと']], maker.play, (p) => { maker.play = p; renderMaker(); });
+  }
+  const color = M.PANELS[inst].color;
+  const rows = inst === 'chord' && maker.play === 'pad' ? [] : SOUND_ROWS[inst];
+  $('#sound-grid').replaceChildren(...rows.map(([row, label]) => {
+    const r = el('div', { className: 'srow' }, [el('span', { className: 'slab', textContent: label })]);
+    r.setAttribute('role', 'group');
+    r.setAttribute('aria-label', label);
+    for (let st = 0; st < M.STEPS; st++) {
+      const c = el('button', { type: 'button', className: `scell${st % 4 === 0 ? ' beat' : ''}` });
+      c.style.setProperty('--c', color);
+      c.setAttribute('aria-label', `${label}：${st + 1}`);
+      c.setAttribute('aria-pressed', String(cellsOf(row).has(st)));
+      c.onclick = () => {
+        const set = cellsOf(row);
+        if (set.has(st)) set.delete(st); else set.add(st);
+        c.setAttribute('aria-pressed', String(set.has(st)));
+      };
+      r.append(c);
+    }
+    return r;
+  }));
+  $('#sound-hint').textContent = SOUND_HINT[inst];
+}
+// 公認の音（または作りかけ）を、いまの雰囲気とテンポで2小節ためしに鳴らす
+function trySound(inst, def) {
+  if (!M.checkSoundDef(inst, def)) { $('#sound-msg').textContent = 'どこか1つ以上、マスを押してね'; return; }
+  const ctx = player.ensure();
+  const bank = { k_try00000: { inst, label: 'ためし', by: 'ためし', def } };
+  const len = M.barSeconds(song.tempo);
+  for (let n = 0; n < 2; n++) {
+    const r = M.renderBar({ inst, pattern: 'k_try00000', mood: song.mood, bar: n, tempo: song.tempo, sampleRate: ctx.sampleRate, sounds: bank });
+    const b = ctx.createBuffer(2, r.left.length, ctx.sampleRate);
+    b.copyToChannel(r.left, 0);
+    b.copyToChannel(r.right, 1);
+    player.start(ctx.currentTime + 0.05 + n * len, b);
+  }
+}
+$('#sound-try').onclick = () => trySound(maker.inst, makerDef());
+$('#sound-clear').onclick = () => { maker.cells.clear(); renderMaker(); };
+$('#sound-submit').onclick = async () => {
+  const consent = Object.fromEntries([...document.querySelectorAll('#sound-consents input')].map((i) => [i.value, i.checked]));
+  try {
+    await api('/sounds', { method: 'POST', body: { inst: maker.inst, label: $('#sound-label').value, def: makerDef(), consent } });
+    $('#sound-msg').textContent = '📮 運営に送ったよ。運営が聞いて「公認」すると、みんなのパネルにならぶよ♪';
+    $('#sound-label').value = '';
+    for (const i of document.querySelectorAll('#sound-consents input')) i.checked = false;
+    maker.cells.clear();
+    renderMaker();
+    await loadSounds();
+  } catch (e) { $('#sound-msg').textContent = e.message; }
+};
+const SOUND_STATUS_CLASS = { pending: '', approved: 'ok', rejected: 'no', withdrawn: 'no' };
+function soundItem(x, buttons) {
+  const tag = M.PANELS[x.inst];
+  return el('li', {}, [
+    el('span', { className: 'name', textContent: `${tag.emoji} ${x.label}` }),
+    el('span', { className: `muted small ${SOUND_STATUS_CLASS[x.status] || ''}`, textContent: [x.statusLabel || `${x.by} さん`, x.note].filter(Boolean).join('：') }),
+    ...buttons,
+  ]);
+}
+function btn(label, fn, cls = 'btn ghost small') {
+  const b = el('button', { type: 'button', className: cls, textContent: label });
+  b.onclick = fn;
+  return b;
+}
+function renderSounds() {
+  const me = state.me;
+  const n = sounds.approved.length;
+  $('#sound-count').textContent = n ? `いま公認されている音：${n}こ` : 'まだ公認された音はありません。最初の1つを作ってみてね。';
+  $('#sound-login').textContent = !me ? '音を出すには「ともはねでログイン」してね。' : me.child ? '音を出せるのは中高生と大人です（名前がみんなに出るので）。公認の音を使うことはできます♪' : '';
+  $('#sound-login').hidden = Boolean(me && sounds.canSubmit);
+  $('#sound-maker').hidden = !sounds.canSubmit;
+  if (sounds.canSubmit && !$('#sound-consents input')) {
+    $('#sound-consents').append(...Object.entries(sounds.consents).map(([k, t]) => el('label', { className: 'check' }, [el('input', { type: 'checkbox', value: k }), el('span', { textContent: t })])));
+  }
+  $('#my-sounds-box').hidden = !sounds.mine.length;
+  $('#my-sounds').replaceChildren(...sounds.mine.map((x) => soundItem(x, [
+    btn('▶ 聞く', () => trySound(x.inst, x.def)),
+    ...(x.status === 'withdrawn' ? [] : [btn('取り下げる', async () => {
+      if (!confirm(`「${x.label}」を取り下げますか？ 新しく使えなくなります（もう作られた曲はそのまま）`)) return;
+      try { await api(`/sounds/${x.id}/withdraw`, { method: 'POST' }); await loadSounds(); } catch (e) { $('#sound-msg').textContent = e.message; }
+    }, 'btn ghost small danger')]),
+  ])));
+  $('#admin-sounds-box').hidden = !sounds.pending;
+  if (sounds.pending) {
+    const decide = async (x, ok) => {
+      const note = ok ? '' : prompt(`「${x.label}」を見送る理由（作った人に見えます・40文字まで）`);
+      if (!ok && !note) return;
+      try { await api(`/admin/sounds/${x.id}/decide`, { method: 'POST', body: { ok, note } }); await loadSounds(); } catch (e) { $('#sound-msg').textContent = e.message; }
+    };
+    $('#admin-sounds').replaceChildren(...(sounds.pending.length ? sounds.pending.map((x) => soundItem({ ...x, statusLabel: `${x.by} さん` }, [
+      btn('▶ 聞く', () => trySound(x.inst, x.def)),
+      btn('⭐ 公認する', () => decide(x, true), 'btn small'),
+      btn('見送る', () => decide(x, false)),
+    ])) : [el('li', { className: 'muted small', textContent: '聞く前の音はありません' })]));
+  }
+}
+renderMaker();

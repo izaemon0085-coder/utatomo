@@ -89,6 +89,73 @@ export const PANELS = {
 };
 export const optionIds = (inst) => Object.keys(PANELS[inst].options);
 
+// ── 公認の音：作者が作って「使ってOK」に同意し、運営が公認したパネル ──
+// 録音した音ではなく、上のパネルと同じ形（どの拍で・どの音を鳴らすか）だけ。だから和音にそろい、外れない
+export const SOUND_INSTS = ['rhythm', 'bass', 'chord', 'melody']; // キラキラは作れない（音のしかけがちがうので）
+export const SOUND_LABEL_MAX = 8;
+export const SOUND_BY_MAX = 20;
+export const MAX_SONG_SOUNDS = 8; // 1曲で使える公認の音は8つまで
+export const DRUMS = ['kick', 'snare', 'hat', 'clap', 'rim'];
+export const SOUND_ID = /^k_[a-z0-9]{8}$/;
+const stepList = (a) => (Array.isArray(a) && a.length <= STEPS && a.every((n) => Number.isInteger(n) && n >= 0 && n < STEPS)
+  ? [...new Set(a)].sort((x, y) => x - y) : null);
+const noteList = (a, ok) => {
+  if (!Array.isArray(a) || !a.length || a.length > STEPS) return null;
+  const out = [];
+  for (const n of a) {
+    if (!Array.isArray(n) || n.length !== 3) return null;
+    const [st, len, w] = n;
+    if (!Number.isInteger(st) || !Number.isInteger(len) || st < 0 || len < 1 || st + len > STEPS || !ok(w)) return null;
+    out.push([st, len, w]);
+  }
+  return out.sort((x, y) => x[0] - y[0]);
+};
+// 公認の音の形をたしかめて、きれいにしたものを返す（正しくなければ null）
+export function checkSoundDef(inst, def) {
+  if (!def || typeof def !== 'object' || Array.isArray(def)) return null;
+  if (inst === 'rhythm') {
+    const out = {};
+    for (const d of DRUMS) {
+      if (def[d] == null) continue;
+      const st = stepList(def[d]);
+      if (!st) return null;
+      if (st.length) out[d] = st;
+    }
+    return Object.keys(out).length ? out : null;
+  }
+  if (inst === 'bass') {
+    const notes = noteList(def.notes, (w) => ['r', 't', 'f', 'o'].includes(w));
+    return notes && { notes };
+  }
+  if (inst === 'melody') {
+    const notes = noteList(def.notes, (w) => Number.isInteger(w) && w >= 0 && w <= 4);
+    return notes && { notes };
+  }
+  if (inst === 'chord') {
+    if (!['arp', 'stab', 'pad'].includes(def.play)) return null;
+    if (def.play === 'pad') return { play: 'pad', steps: [0] };
+    const st = stepList(def.steps);
+    if (!st || !st.length) return null;
+    return { play: def.play, steps: st, ...(def.soft === true ? { soft: true } : {}) };
+  }
+  return null;
+}
+// 公認の音の名前・作者の名前：見えない文字をのぞいて、長さをたしかめる（正しくなければ null）
+export function cleanName(v, max) {
+  if (typeof v !== 'string') return null;
+  const t = v.replace(/[\u0000-\u001f\u007f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, '').replace(/\s+/g, ' ').trim();
+  return t &&[...t].length <= max ? t : null;
+}
+// パネルの中身：もとからあるパネル、なければ曲についている公認の音
+export function optionDef(inst, pattern, sounds) {
+  if (pattern == null) return null;
+  if (Object.hasOwn(PANELS[inst]?.options || {}, pattern)) return PANELS[inst].options[pattern];
+  const x = sounds && Object.hasOwn(sounds, pattern) ? sounds[pattern] : null;
+  return x && x.inst === inst ? x.def : null;
+}
+export const optionLabel = (inst, pattern, sounds) => (Object.hasOwn(PANELS[inst]?.options || {}, pattern)
+  ? PANELS[inst].options[pattern].label : sounds?.[pattern]?.inst === inst ? `⭐${sounds[pattern].label}` : '');
+
 // ── 曲の部分と長さ ──
 export const PARTS = {
   intro: { label: 'イントロ', color: '#8ab6e8' },
@@ -184,6 +251,22 @@ export function checkSong(input) {
   const tempo = Number(input.tempo);
   if (!Number.isInteger(tempo) || tempo < TEMPO_MIN || tempo > TEMPO_MAX) return bad('tempo');
   if (!Array.isArray(input.sections) || !input.sections.length || input.sections.length > MAX_SECTIONS) return bad('sections');
+  // 公認の音（曲の中に、使っている音の形と作者の名前を持っておく。サーバーは保存のとき、運営が公認した音か確かめる）
+  const given = {};
+  if (input.sounds != null) {
+    if (typeof input.sounds !== 'object' || Array.isArray(input.sounds)) return bad('sounds');
+    const ent = Object.entries(input.sounds);
+    if (ent.length > MAX_SONG_SOUNDS * 2) return bad('sounds');
+    for (const [id, x] of ent) {
+      if (!SOUND_ID.test(id) || !x || !SOUND_INSTS.includes(x.inst)) return bad('sounds');
+      const label = cleanName(x.label, SOUND_LABEL_MAX);
+      const by = cleanName(x.by, SOUND_BY_MAX);
+      const def = checkSoundDef(x.inst, x.def);
+      if (!label || !by || !def) return bad('sounds');
+      given[id] = { inst: x.inst, label, by, def };
+    }
+  }
+  const used = {};
   const sections = [];
   for (const s of input.sections) {
     if (!s || typeof s !== 'object' || !PARTS[s.part]) return bad('part');
@@ -191,7 +274,10 @@ export function checkSong(input) {
     const panels = {};
     for (const inst of INSTS) {
       const v = s.panels?.[inst] ?? null;
-      if (v !== null && !Object.hasOwn(PANELS[inst].options, v)) return bad('panels');
+      if (v !== null && !Object.hasOwn(PANELS[inst].options, v)) {
+        if (!Object.hasOwn(given, v) || given[v].inst !== inst) return bad('panels');
+        used[v] = given[v];
+      }
       panels[inst] = v;
     }
     const lyric = cleanLyric(s.lyric);
@@ -199,7 +285,8 @@ export function checkSong(input) {
     if (s.call != null && !CALLS.includes(s.call)) return bad('call');
     sections.push({ part: s.part, bars: s.bars, panels, ...(lyric ? { lyric } : {}), ...(s.call ? { call: s.call } : {}) });
   }
-  const song = { v: 1, mood: input.mood, length, tempo, quiet: Boolean(input.quiet), sections };
+  if (Object.keys(used).length > MAX_SONG_SOUNDS) return bad('sounds');
+  const song = { v: 1, mood: input.mood, length, tempo, quiet: Boolean(input.quiet), sections, ...(Object.keys(used).length ? { sounds: used } : {}) };
   if (totalBars(song) > MAX_BARS || songSeconds(song) > MAX_SECONDS) return bad('bars');
   return { ok: true, song };
 }
@@ -341,17 +428,17 @@ function env(t, dur, attack, release) {
 }
 
 // 1小節ぶんの音を作る。left / right は小節の長さ＋余韻の長さ
-export function renderBar({ inst, pattern, mood = 'bright', bar = 0, tempo, sampleRate = 44100, fill = false, quiet = false }) {
+export function renderBar({ inst, pattern, mood = 'bright', bar = 0, tempo, sampleRate = 44100, fill = false, quiet = false, sounds = null }) {
   const m = MOODS[mood] || MOODS.bright;
   const sr = sampleRate;
   const barLen = Math.round(barSeconds(tempo ?? m.tempo) * sr);
   const out = new Buf(barLen + Math.round(TAIL_SEC * sr));
-  const def = PANELS[inst]?.options?.[pattern];
+  const def = optionDef(inst, pattern, sounds);
   if (!def) return { left: out.l, right: out.r, barLength: barLen };
   const stepLen = barLen / STEPS;
   // スウィング（おしゃれ）：うらの16分音符を少しおそく
   const at = (step) => Math.round((step + (step % 2 ? m.swing : 0)) * stepLen);
-  const rng = makeRng(1 + bar * 97 + INSTS.indexOf(inst) * 131 + optionIds(inst).indexOf(pattern) * 17);
+  const rng = makeRng(1 + bar * 97 + INSTS.indexOf(inst) * 131 + Math.max(0, optionIds(inst).indexOf(pattern)) * 17);
   const sec = (s) => Math.round(s * sr);
 
   if (inst === 'rhythm') {
@@ -448,7 +535,7 @@ export function renderSong(song, { sampleRate = 44100 } = {}) {
       const key = barKey(song, inst, pattern, n, fill);
       let r = cache.get(key);
       if (!r) {
-        r = renderBar({ inst, pattern, mood: song.mood, bar: n, tempo: song.tempo, sampleRate: sr, fill, quiet: song.quiet });
+        r = renderBar({ inst, pattern, mood: song.mood, bar: n, tempo: song.tempo, sampleRate: sr, fill, quiet: song.quiet, sounds: song.sounds });
         cache.set(key, r);
       }
       const off = n * barLen;
@@ -499,7 +586,10 @@ export function encodeWav(left, right, sampleRate) {
 }
 
 // SNS にのせるときのクレジット（自分たちのタグ）
-export function creditText(title) {
+// 公認の音を使ったときは、作者の名前も入れる
+export function creditText(title, song = null) {
   const t = String(title || '').trim() || 'わたしの1曲';
-  return `♪「${t}」うたとも（ともはね）で作りました／音 © ともはね #ともはね #うたとも`;
+  const by = [...new Set(Object.values(song?.sounds || {}).map((x) => x.by))];
+  const help = by.length ? `／音の協力 ${by.map((n) => `${n} さん`).join('・')}` : '';
+  return `♪「${t}」うたとも（ともはね）で作りました／音 © ともはね${help} #ともはね #うたとも`;
 }

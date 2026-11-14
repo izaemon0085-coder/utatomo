@@ -7,6 +7,7 @@ import { extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createStudio, HttpError, MAX_SONGS, TITLE_MAX } from './studio.js';
 import { createRooms } from './rooms.js';
+import { createSounds } from './sounds.js';
 
 const ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)));
 const PUBLIC = join(ROOT, 'public');
@@ -42,7 +43,7 @@ const readCookie = (req, name) => {
   return null;
 };
 
-export function createApp({ tomohaneUrl = TOMOHANE_URL, linkSecret = LINK_SECRET, fetchImpl = fetch, studio = createStudio(), vtomoUrl = VTOMO_URL, tomoruUrl = TOMORU_URL, rooms = createRooms({ studio }) } = {}) {
+export function createApp({ tomohaneUrl = TOMOHANE_URL, linkSecret = LINK_SECRET, fetchImpl = fetch, studio = createStudio(), vtomoUrl = VTOMO_URL, tomoruUrl = TOMORU_URL, rooms = createRooms({ studio }), sounds = createSounds({ studio }) } = {}) {
   const sessions = new Map(); // トークン → gameId
   const me = (req) => {
     const id = sessions.get(readCookie(req, COOKIE));
@@ -58,9 +59,14 @@ export function createApp({ tomohaneUrl = TOMOHANE_URL, linkSecret = LINK_SECRET
     ['GET', /^\/api\/health$/, () => ({ ok: true })],
     ['GET', /^\/api\/config$/, () => ({ tomohaneUrl, vtomoUrl, tomoruUrl, max: MAX_SONGS, titleMax: TITLE_MAX })],
     ['GET', /^\/api\/state$/, ({ req }) => studio.view(me(req))],
-    ['POST', /^\/api\/songs$/, ({ req, body }) => [201, studio.save(need(req), { title: body.title, song: body.song })]],
-    ['POST', /^\/api\/songs\/([\w-]+)$/, ({ req, params, body }) => studio.save(need(req), { id: params[0], title: body.title, song: body.song })],
+    ['POST', /^\/api\/songs$/, ({ req, body }) => [201, studio.save(need(req), { title: body.title, song: body.song }, sounds)]],
+    ['POST', /^\/api\/songs\/([\w-]+)$/, ({ req, params, body }) => studio.save(need(req), { id: params[0], title: body.title, song: body.song }, sounds)],
     ['POST', /^\/api\/songs\/([\w-]+)\/delete$/, ({ req, params }) => studio.remove(need(req), params[0])],
+    // 公認の音（見るのはだれでも。出す・取り下げるはログイン、決めるのは運営）
+    ['GET', /^\/api\/sounds$/, ({ req }) => sounds.list(me(req))],
+    ['POST', /^\/api\/sounds$/, ({ req, body }) => [201, sounds.submit(need(req), body)]],
+    ['POST', /^\/api\/sounds\/(k_[a-z0-9]{8})\/withdraw$/, ({ req, params }) => sounds.withdraw(need(req), params[0])],
+    ['POST', /^\/api\/admin\/sounds\/(k_[a-z0-9]{8})\/decide$/, ({ req, params, body }) => sounds.decide(need(req), params[0], body)],
     // みんなで1曲（ルーム）
     ['GET', /^\/api\/rooms$/, ({ req }) => rooms.list(need(req))],
     ['POST', /^\/api\/rooms$/, ({ req, body }) => [201, rooms.create(need(req), body)]],
