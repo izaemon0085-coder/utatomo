@@ -146,3 +146,12 @@ p { margin: 4px 0; }
   .srow .slab { grid-row: span 2; }
   .slab { font-size: .64rem; }
 }
+
+/* 🔔 効果音モード */
+.sfx-feel { display: grid; gap: 4px; margin: 8px 0; }
+.sfx-feel label { display: grid; grid-template-columns: 4.5em 1fr 4.5em; align-items: center; gap: 6px; font-size: .85rem; }
+.sfx-feel label span:last-child { text-align: right; }
+.sfx-feel input, .sfx-len input { min-height: 40px; accent-color: var(--accent); }
+.sfx-len { display: flex; gap: 8px; align-items: center; font-size: .9rem; }
+.sfx-list { list-style: none; padding: 0; margin: 6px 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.sfx-list li { display: flex; gap: 4px; align-items: center; border: 1px solid var(--border); border-radius: 999px; padding: 2px 4px 2px 12px; }

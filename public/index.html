@@ -199,6 +199,25 @@
       </div>
       <p class="muted small" id="sound-msg" aria-live="polite"></p>
     </section>
+
+    <section class="card" aria-labelledby="h-sfx">
+      <h2 id="h-sfx"><span class="no">10</span> 🔔 効果音モード</h2>
+      <p class="muted small">「ドカーン！」「ピロリン」のように書くと、音になります。「！」が多いほど強く、「ー」で長く、ひらがなはやわらかく。音はぜんぶ計算で作るので、ほかの音源はつかいません。</p>
+      <div class="chips" id="sfx-examples" aria-label="ためしてみる"></div>
+      <label class="title-field">オノマトペ（12文字まで）<input type="text" id="sfx-text" maxlength="12" value="ドカーン！！" autocomplete="off"></label>
+      <p class="small" id="sfx-desc" aria-live="polite"></p>
+      <div class="sfx-feel" id="sfx-feel"></div>
+      <label class="check small"><input type="checkbox" id="sfx-fixlen"> 長さをぴったりにする</label>
+      <label class="sfx-len" id="sfx-len-box" hidden>長さ <input type="range" id="sfx-len" min="0.1" max="4" step="0.05" value="1"> <output id="sfx-len-out">1.00 秒</output></label>
+      <div class="btn-row">
+        <button type="button" class="btn" id="sfx-play">▶ 鳴らす</button>
+        <button type="button" class="btn ghost" id="sfx-variants">🎲 5つのちがいを作る</button>
+        <button type="button" class="btn ghost" id="sfx-save">💾 WAV で保存</button>
+      </div>
+      <ul class="sfx-list" id="sfx-list"></ul>
+      <p class="muted small">🔈 耳を守るため、音の大きさはそろえてあります。はじめは小さめの音量で聞いてください。</p>
+      <p class="error small" id="sfx-error" role="alert"></p>
+    </section>
   </main>
 
   <div class="transport" role="group" aria-label="再生">
@@ -209,5 +228,6 @@
     <div class="progress" aria-hidden="true"><span id="bar"></span></div>
   </div>
   <script type="module" src="/app.js"></script>
+  <script type="module" src="/sfxapp.js"></script>
 </body>
 </html>
