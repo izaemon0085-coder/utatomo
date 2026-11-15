@@ -205,26 +205,62 @@ const standMask = (L) => (L.outfit === 'shinobi'
   : '');
 const catEars = (c) => `<path d="M56 74 L58 24 L92 50 Z" ${S(c)}/><path d="M144 74 L142 24 L108 50 Z" ${S(c)}/><path d="M63 62 L64 36 L82 50 Z" fill="${CHEEK}"/><path d="M137 62 L136 36 L118 50 Z" fill="${CHEEK}"/>`;
 
+// 立ち絵の層（骨ごとに分けておく。renderStand は全部をつなげるだけ、renderRig は骨のグループに入れる）
+function standLayers(L) {
+  const pat = WA_OUTFITS.includes(L.outfit) ? patternDef(L.pattern, L.outfitColor) : null;
+  return {
+    defs: pat ? `<defs>${pat.def}</defs>` : '',
+    back: standBack(L.accessory),
+    hair: standHairBack(L.hairStyle, L.hairColor),
+    neck: `<rect x="89" y="150" width="22" height="26" fill="${L.skin}"/>`,
+    outfit: standOutfit(L.outfit, L.outfitColor, pat),
+    head: `<ellipse cx="100" cy="104" rx="52" ry="54" ${S(L.skin)}/>`
+      + standEye(L.eyes, 80, L.eyeColor) + standEye(L.eyes, 120, L.eyeColor)
+      + (L.cheek === 'on' ? `<ellipse cx="68" cy="128" rx="8" ry="5" fill="${CHEEK}" opacity=".7"/><ellipse cx="132" cy="128" rx="8" ry="5" fill="${CHEEK}" opacity=".7"/>` : '')
+      + standMouth(L.mouth)
+      + standMask(L)
+      + (L.accessory === 'catears' ? catEars(L.hairColor) : '')
+      + standHairFront(L.hairStyle, L.hairColor)
+      + standAccessory(L.accessory, L),
+  };
+}
+
 export function renderStand(input, { size } = {}) {
   const { ok, look } = checkLook(input);
   const L = ok ? look : DEFAULT_LOOK;
   const wh = size ? ` width="${Math.round(size * (2 / 3))}" height="${size}"` : '';
-  const pat = WA_OUTFITS.includes(L.outfit) ? patternDef(L.pattern, L.outfitColor) : null;
+  const y = standLayers(L);
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 300"${wh} role="img" aria-label="キャラの立ち絵">`
-    + (pat ? `<defs>${pat.def}</defs>` : '')
-    + standBack(L.accessory)
-    + standHairBack(L.hairStyle, L.hairColor)
-    + `<rect x="89" y="150" width="22" height="26" fill="${L.skin}"/>`
-    + standOutfit(L.outfit, L.outfitColor, pat)
-    + `<ellipse cx="100" cy="104" rx="52" ry="54" ${S(L.skin)}/>`
-    + standEye(L.eyes, 80, L.eyeColor) + standEye(L.eyes, 120, L.eyeColor)
-    + (L.cheek === 'on' ? `<ellipse cx="68" cy="128" rx="8" ry="5" fill="${CHEEK}" opacity=".7"/><ellipse cx="132" cy="128" rx="8" ry="5" fill="${CHEEK}" opacity=".7"/>` : '')
-    + standMouth(L.mouth)
-    + standMask(L)
-    + (L.accessory === 'catears' ? catEars(L.hairColor) : '')
-    + standHairFront(L.hairStyle, L.hairColor)
-    + standAccessory(L.accessory, L)
-    + '</svg>';
+    + y.defs + y.back + y.hair + y.neck + y.outfit + y.head + '</svg>';
+}
+
+// ───────── 骨つきの立ち絵（動かす用）。data-bone のグループを public/motion.js の動きで動かす ─────────
+// 骨：root（からだ全体）・back（せなかの刀）・hair（うしろ髪）・body（首とふく）・hem（ふく。裾がゆれる）・head（顔・前髪・こもの）
+// 小道具：fan（扇子と腕）・sword（刀と両手）。ふだんはかくしておく
+export const RIG_VIEWBOX = '-20 -40 240 360';
+export function renderRig(input, { size } = {}) {
+  const { ok, look } = checkLook(input);
+  const L = ok ? look : DEFAULT_LOOK;
+  const y = standLayers(L);
+  const wh = size ? ` width="${Math.round(size * (2 / 3))}" height="${size}"` : '';
+  const sleeve = L.outfit === 'miko' || L.outfit === 'sailor' ? '#f7f7f7' : L.outfitColor;
+  const hand = (x, yy) => `<circle cx="${x}" cy="${yy}" r="6.5" ${S(L.skin, 2)}/>`;
+  const ribs = [-150, -132, -114, -96, -78, -60].map((a) => {
+    const r = (a * Math.PI) / 180;
+    return `M0 0 L${(42 * Math.cos(r)).toFixed(1)} ${(42 * Math.sin(r)).toFixed(1)}`;
+  }).join(' ');
+  const arc = (r) => `${(r * Math.cos((-150 * Math.PI) / 180)).toFixed(1)} ${(r * Math.sin((-150 * Math.PI) / 180)).toFixed(1)} A${r} ${r} 0 0 1 ${(r * Math.cos((-60 * Math.PI) / 180)).toFixed(1)} ${(r * Math.sin((-60 * Math.PI) / 180)).toFixed(1)}`;
+  const fan = `<g data-bone="fan" style="display:none"><path d="M126 180 Q150 186 160 204 L150 214 Q138 198 120 194 Z" ${S(sleeve, 2.5)}/>`
+    + `<g data-bone="fanBlade" transform="translate(156 208)"><path d="M0 0 L${arc(44)} Z" ${S('#fbf6e9', 2)}/><path d="${ribs}" fill="none" stroke="${shade(L.outfitColor, -0.2)}" stroke-width="1.2"/>`
+    + `<path d="M${arc(44)}" fill="none" stroke="${L.outfitColor}" stroke-width="5"/></g>${hand(156, 208)}</g>`;
+  const sword = `<g data-bone="sword" style="display:none"><path d="M72 182 Q84 206 96 222 L106 222 Q96 200 84 178 Z" ${S(sleeve, 2.5)}/><path d="M128 182 Q116 206 104 222 L94 222 Q104 200 116 178 Z" ${S(sleeve, 2.5)}/>`
+    + `<g data-bone="blade" transform="translate(100 224)"><rect x="-3" y="-128" width="6" height="104" rx="3" ${S('#e6ecf2', 1.5)}/><path d="M0 -120 L0 -30" stroke="#fff" stroke-width="1.2"/>`
+    + `<ellipse cy="-22" rx="11" ry="3.5" ${S('#e9b949', 2)}/><rect x="-4" y="-20" width="8" height="30" rx="3" ${S('#3b332d', 2)}/></g>${hand(97, 224)}${hand(103, 232)}</g>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${RIG_VIEWBOX}"${wh} role="img" aria-label="動くキャラ">${y.defs}`
+    + '<ellipse data-bone="shadow" cx="100" cy="304" rx="54" ry="7" fill="rgba(0,0,0,.14)"/>'
+    + `<g data-bone="root"><g data-bone="back">${y.back}</g><g data-bone="hair">${y.hair}</g>`
+    + `<g data-bone="body">${y.neck}<g data-bone="hem">${y.outfit}</g></g>`
+    + `<g data-bone="head">${y.head}</g>${fan}${sword}</g></svg>`;
 }
 
 // ───────── ちびキャラ（48×64）：町を歩く用。向き down/up/left/right・歩きのコマ 0〜3 ─────────
